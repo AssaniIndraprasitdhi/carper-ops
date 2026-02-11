@@ -1,0 +1,165 @@
+@model Capet_OPS.Models.Entities.LayoutPlan
+@{
+    ViewData["Title"] = $"Plan {Model.PlanCode}";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <a href="/Layout/Plans" class="text-decoration-none text-muted">
+            <i class="bi bi-arrow-left me-1"></i>กลับไปรายการแผน
+        </a>
+        <h4 class="fw-bold mt-2 mb-0">
+            <i class="bi bi-file-earmark-text me-2"></i>@Model.PlanCode
+        </h4>
+    </div>
+    <div>
+        <span class="badge fs-6 @(Model.Status == "planned" ? "bg-primary" : Model.Status == "completed" ? "bg-success" : "bg-secondary")">
+            @Model.Status.ToUpper()
+        </span>
+    </div>
+</div>
+
+<!-- Plan Info -->
+<div class="row g-4 mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-white fw-medium">
+                <i class="bi bi-info-circle me-1"></i>ข้อมูลแผน
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="small text-muted">ชนิดผ้าใบ</div>
+                        <div class="fw-medium">@Model.CanvasType?.CnvDesc</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="small text-muted">ความกว้าง</div>
+                        <div class="fw-medium">@Model.RollWidth ม.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="small text-muted">วันที่สร้าง</div>
+                        <div class="fw-medium">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="row text-center g-2">
+                    <div class="col-6">
+                        <div class="small text-muted">ประสิทธิภาพ</div>
+                        <div class="fs-4 fw-bold text-success">@Model.EfficiencyPct%</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">จำนวนชิ้น</div>
+                        <div class="fs-4 fw-bold text-warning">@Model.PieceCount</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="small text-muted">ใช้จริง</div>
+                        <div class="fw-bold text-primary">@Model.UsedArea ตร.ม.</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="small text-muted">สูญเสีย</div>
+                        <div class="fw-bold text-danger">@Model.WasteArea ตร.ม.</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="small text-muted">ยาวรวม</div>
+                        <div class="fw-bold text-info">@Model.TotalLength ม.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Layout Visualization -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-medium">
+        <i class="bi bi-easel me-1"></i>Layout
+    </div>
+    <div class="card-body" id="canvasContainer" style="overflow: auto;">
+        <canvas id="layoutCanvas"></canvas>
+    </div>
+</div>
+
+<!-- Items Table -->
+<div class="card">
+    <div class="card-header bg-white fw-medium">
+        <i class="bi bi-table me-1"></i>รายการในแผน (@Model.Items.Count รายการ)
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Barcode</th>
+                        <th>Order</th>
+                        <th>Item No</th>
+                        <th>W (m)</th>
+                        <th>L (m)</th>
+                        <th>Area (sqm)</th>
+                        <th>Qty</th>
+                        <th>Type</th>
+                        <th>Position</th>
+                        <th>Rotated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ int idx = 1; }
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td>@idx</td>
+                            <td><code>@item.BarcodeNo</code></td>
+                            <td>@item.Orno</td>
+                            <td>@item.ItemNo</td>
+                            <td>@item.Width</td>
+                            <td>@item.Length</td>
+                            <td>@item.Area</td>
+                            <td>@item.Qty</td>
+                            <td>
+                                <span class="badge @(item.OrderType == "Order" ? "bg-primary" : "bg-info")">@item.OrderType</span>
+                            </td>
+                            <td>(@item.PackX, @item.PackY)</td>
+                            <td>@(item.IsRotated ? "Yes" : "No")</td>
+                        </tr>
+                        idx++;
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/canvas-renderer.js" asp-append-version="true"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const planData = @Html.Raw(Model.LayoutJson ?? "[]");
+            const rollWidth = @Model.RollWidth;
+            const totalLength = @Model.TotalLength;
+
+            if (planData && planData.length > 0) {
+                const result = {
+                    rollWidth: rollWidth,
+                    totalLength: totalLength,
+                    packedItems: planData.map(item => ({
+                        packX: item.PackX ?? item.packX,
+                        packY: item.PackY ?? item.packY,
+                        packWidth: item.PackWidth ?? item.packWidth,
+                        packLength: item.PackLength ?? item.packLength,
+                        orno: item.ORNO ?? item.orno ?? item.oRNO,
+                        originalWidth: item.OriginalWidth ?? item.originalWidth,
+                        originalLength: item.OriginalLength ?? item.originalLength,
+                        isRotated: item.IsRotated ?? item.isRotated
+                    }))
+                };
+                const renderer = new CanvasRenderer('layoutCanvas');
+                renderer.render(result);
+            }
+        });
+    </script>
+}

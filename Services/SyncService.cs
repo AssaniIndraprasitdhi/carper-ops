@@ -1,0 +1,111 @@
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Dapper;
+using Capet_OPS.Data;
+using Capet_OPS.Models.Dtos;
+using Capet_OPS.Models.Entities;
+
+namespace Capet_OPS.Services;
+
+public class SyncService : ISyncService
+{
+    private readonly SqlServerSettings _sqlSettings;
+    private readonly AppDbContext _db;
+    private readonly ILogger<SyncService> _logger;
+
+    public SyncService(SqlServerSettings sqlSettings, AppDbContext db, ILogger<SyncService> logger)
+    {
+        _sqlSettings = sqlSettings;
+        _db = db;
+        _logger = logger;
+    }
+
+    public async Task<int> SyncFromSqlServerAsync()
+    {
+        // 1. Query all orders from SQL Server
+        const string sql = @"
+            SELECT
+                C.HT_BARCODE AS BarcodeNo,
+                A.ORNO,
+                B.PD_ITEM AS ListNo,
+                C.ITEM_NO AS ItemNo,
+                B.CnvID,
+                B.CnvDesc,
+                B.AsPlan AS ASPLAN,
+                B.PD_WIDTH AS Width,
+                B.PD_LEN AS [Length],
+                C.SQM AS Sqm,
+                C.Qty AS Qty,
+                CASE WHEN A.ORTP = '0' THEN 'Order' ELSE 'Sample' END AS OrderType
+            FROM CARPET.DBO.ORHMAIN A
+            LEFT JOIN CARPET.DBO.ORDMAIN B ON A.AUTO = B.AUTO
+            LEFT JOIN CARPET.DBO.HT_SCANBARCODE C ON C.OF_NO = A.ORNO
+            WHERE A.ORDT >= '2026-01-01'
+              AND C.HT_BARCODE IS NOT NULL
+              AND ISNULL(B.CnvID,'') <> ''";
+
+        using var connection = new SqlConnection(_sqlSettings.ConnectionString);
+        var rawOrders = (await connection.QueryAsync<SqlServerOrderDto>(sql)).ToList();
+        _logger.LogInformation("Fetched {Count} raw rows from SQL Server", rawOrders.Count);
+
+        // 2. Deduplicate by BarcodeNo (LEFT JOIN may produce duplicates)
+        var sqlOrders = rawOrders
+            .Where(o => !string.IsNullOrEmpty(o.BarcodeNo) && !string.IsNullOrEmpty(o.ORNO))
+            .GroupBy(o => o.BarcodeNo)
+            .Select(g => g.First())
+            .ToList();
+        _logger.LogInformation("After dedup: {Count} unique barcodes", sqlOrders.Count);
+
+        // 3. Get existing barcodes from PostgreSQL
+        var existingMap = await _db.FabricPieces
+            .ToDictionaryAsync(f => f.BarcodeNo, f => f);
+
+        // 4. Upsert: insert new, update existing
+        var now = DateTime.UtcNow;
+        int inserted = 0, updated = 0;
+
+        foreach (var order in sqlOrders)
+        {
+            if (existingMap.TryGetValue(order.BarcodeNo, out var existing))
+            {
+                existing.Orno = order.ORNO ?? "";
+                existing.ListNo = order.ListNo;
+                existing.ItemNo = order.ItemNo;
+                existing.CnvId = order.CnvID ?? "";
+                existing.CnvDesc = order.CnvDesc;
+                existing.AsPlan = order.ASPLAN;
+                existing.Width = order.Width;
+                existing.Length = order.Length;
+                existing.Sqm = order.Sqm;
+                existing.Qty = order.Qty;
+                existing.OrderType = order.OrderType;
+                existing.SyncedAt = now;
+                updated++;
+            }
+            else
+            {
+                _db.FabricPieces.Add(new FabricPiece
+                {
+                    BarcodeNo = order.BarcodeNo,
+                    Orno = order.ORNO ?? "",
+                    ListNo = order.ListNo,
+                    ItemNo = order.ItemNo,
+                    CnvId = order.CnvID ?? "",
+                    CnvDesc = order.CnvDesc,
+                    AsPlan = order.ASPLAN,
+                    Width = order.Width,
+                    Length = order.Length,
+                    Sqm = order.Sqm,
+                    Qty = order.Qty,
+                    OrderType = order.OrderType,
+                    SyncedAt = now,
+                });
+                inserted++;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("Sync complete: {Inserted} inserted, {Updated} updated", inserted, updated);
+        return inserted + updated;
+    }
+}

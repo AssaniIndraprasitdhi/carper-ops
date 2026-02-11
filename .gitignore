@@ -1,0 +1,108 @@
+#######################################
+# Environment / Secrets
+#######################################
+.env
+.env.*
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+#######################################
+# .NET / ASP.NET Core
+#######################################
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.csproj.user
+*.dbmdl
+*.pdb
+*.mdb
+*.cache
+*.log
+*.vspscc
+*.vssscc
+
+#######################################
+# Visual Studio
+#######################################
+.vs/
+*.sln.docstates
+
+#######################################
+# Rider / JetBrains
+#######################################
+.idea/
+*.sln.iml
+
+#######################################
+# VS Code
+#######################################
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+#######################################
+# EF Core / Migrations (optional)
+#######################################
+# Uncomment if you DON'T want migrations tracked
+# Migrations/
+
+#######################################
+# Node (if using frontend tooling)
+#######################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+
+#######################################
+# OS Files
+#######################################
+.DS_Store
+Thumbs.db
+desktop.ini
+
+#######################################
+# Logs
+#######################################
+logs/
+*.log
+
+#######################################
+# Exported Files (PNG / Excel / TIF / Reports)
+#######################################
+wwwroot/exports/
+exports/
+*.png
+*.xlsx
+*.csv
+*.tif
+
+#######################################
+# Temporary Files
+#######################################
+*.tmp
+*.temp
+*.bak
+
+#######################################
+# Docker (if added later)
+#######################################
+docker-compose.override.yml
+
+#######################################
+# Coverage / Test
+#######################################
+coverage/
+TestResults/
+
+#######################################
+# Publish Output
+#######################################
+publish/
