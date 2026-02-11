@@ -69,13 +69,18 @@ public class CalculationApiController : ControllerBase
             var fittable = selectedOrders
                 .Where(o => Math.Min(o.Width, o.Length) <= ct.RollWidth)
                 .ToList();
+            var skipped = selectedOrders
+                .Where(o => Math.Min(o.Width, o.Length) > ct.RollWidth)
+                .ToList();
+
             if (fittable.Count == 0) continue;
 
             foreach (var (algo, nameEn, nameTh) in algorithms)
             {
                 try
                 {
-                    var result = _service.Calculate(ct.RollWidth, fittable, algo);
+                    var resultActual = _service.Calculate(ct.RollWidth, fittable, algo, 150);
+                    var resultOptimized = _service.Calculate(ct.RollWidth, fittable, algo, 0);
                     results.Add(new AlgorithmResultDto
                     {
                         AlgorithmName = nameEn,
@@ -83,7 +88,11 @@ public class CalculationApiController : ControllerBase
                         RollWidth = ct.RollWidth,
                         CnvDesc = ct.CnvDesc,
                         CanvasTypeId = ct.Id,
-                        Result = result
+                        FittableCount = fittable.Count,
+                        SkippedCount = skipped.Count,
+                        SkippedBarcodes = skipped.Select(o => o.BarcodeNo).ToList(),
+                        Result = resultActual,
+                        ResultOptimized = resultOptimized
                     });
                 }
                 catch { /* skip if algorithm fails */ }
@@ -96,6 +105,10 @@ public class CalculationApiController : ControllerBase
             best.IsBest = true;
         }
 
-        return Ok(new CompareResultDto { Results = results });
+        return Ok(new CompareResultDto
+        {
+            Results = results,
+            TotalSelected = selectedOrders.Count
+        });
     }
 }

@@ -2,41 +2,53 @@
     ViewData["Title"] = "Plans";
 }
 
-<div class="d-flex align-items-center justify-content-between mb-4">
-    <h4 class="fw-bold mb-0"><i class="bi bi-list-check me-2"></i>รายการแผน</h4>
-    <div class="d-flex gap-2">
-        <select id="statusFilter" class="form-select form-select-sm" style="width: auto;">
-            <option value="">ทั้งหมด</option>
-            <option value="planned">Planned</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-        </select>
-        <button id="btnRefresh" class="btn btn-sm btn-outline-primary">
-            <i class="bi bi-arrow-clockwise"></i>
-        </button>
+<div class="container-fluid px-4 py-4">
+    <!-- Page Header -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center gap-3">
+            <div class="plans-icon-box">
+                <i class="bi bi-clipboard2-data"></i>
+            </div>
+            <div>
+                <h4 class="fw-bold mb-0">รายการแผน</h4>
+                <span class="text-muted small" id="plansSummary">กำลังโหลด...</span>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <select id="statusFilter" class="form-select form-select-sm plans-filter-select">
+                <option value="">ทุกสถานะ</option>
+                <option value="planned">Planned</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <button id="btnRefresh" class="btn btn-sm btn-outline-secondary plans-refresh-btn" title="รีเฟรช">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
     </div>
-</div>
 
-<div class="card">
-    <div class="card-body p-0">
+    <!-- Plans Table -->
+    <div class="plans-table-card">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
+            <table class="table plans-table mb-0">
+                <thead>
                     <tr>
-                        <th>รหัสแผน</th>
+                        <th class="ps-4">รหัสแผน</th>
                         <th>ชนิดผ้าใบ</th>
-                        <th>ความกว้าง (ม.)</th>
-                        <th>จำนวนชิ้น</th>
-                        <th>ประสิทธิภาพ</th>
-                        <th>พื้นที่ใช้ (ตร.ม.)</th>
-                        <th>สูญเสีย (ตร.ม.)</th>
-                        <th>สถานะ</th>
+                        <th class="text-center">กว้าง</th>
+                        <th class="text-center">ชิ้น</th>
+                        <th class="text-center">ประสิทธิภาพ</th>
+                        <th class="text-end">ใช้จริง</th>
+                        <th class="text-end">สูญเสีย</th>
+                        <th class="text-center">สถานะ</th>
                         <th>วันที่สร้าง</th>
-                        <th style="width:120px;">Actions</th>
+                        <th class="text-center pe-4" style="width:90px;"></th>
                     </tr>
                 </thead>
                 <tbody id="plansTableBody">
-                    <tr><td colspan="10" class="text-center text-muted py-4">Loading...</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted py-5">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>กำลังโหลด...
+                    </td></tr>
                 </tbody>
             </table>
         </div>
@@ -46,15 +58,19 @@
 <!-- Delete Confirmation Modal -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-body text-center py-4">
-                <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 3rem;"></i>
-                <h5 class="mt-3 fw-bold">ยืนยันการลบ</h5>
-                <p class="text-muted">ต้องการลบแผน <strong id="deletePlanCode"></strong> หรือไม่?</p>
-                <p class="small text-danger">Orders ที่อยู่ในแผนนี้จะกลับไปแสดงในรายการ</p>
-                <div class="mt-3">
-                    <button id="btnConfirmDelete" class="btn btn-danger me-2">ลบ</button>
-                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+            <div class="modal-body text-center py-5 px-4">
+                <div class="d-inline-flex align-items-center justify-content-center rounded-circle mb-3" style="width:64px;height:64px;background:#fff3cd;">
+                    <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 1.8rem;"></i>
+                </div>
+                <h5 class="fw-bold">ยืนยันการลบ</h5>
+                <p class="text-muted mb-1">ต้องการลบแผน <strong id="deletePlanCode"></strong> หรือไม่?</p>
+                <p class="small text-danger mb-4">Orders ที่อยู่ในแผนนี้จะกลับไปแสดงในรายการ</p>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button id="btnConfirmDelete" class="btn btn-danger px-4">
+                        <i class="bi bi-trash me-1"></i>ลบแผน
+                    </button>
                 </div>
             </div>
         </div>

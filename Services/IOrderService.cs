@@ -5,4 +5,5 @@ namespace Capet_OPS.Services;
 public interface IOrderService
 {
     Task<List<SqlServerOrderDto>> GetOrdersByCnvIdAsync(string cnvId);
+    Task<List<SqlServerOrderDto>> GetOrdersByCnvIdAsync(string cnvId, int? excludePlanId);
 }

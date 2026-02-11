@@ -10,8 +10,12 @@
     let expandedGroups = {};
     let detailRenderer = null;
     let currentDetailIndex = null;
+    let totalSelected = 0;
+    let viewMode = 'optimize'; // 'actual' (scroll) or 'optimize' (fit-to-screen)
+    let editingPlanId = null;   // non-null when editing an existing plan
+    let editingPlanCode = null;
     const rollWidthColors = {};
-    const colorPalette = ['#6c5ce7', '#00b894', '#e17055', '#0984e3', '#fdcb6e', '#e84393', '#00cec9', '#a29bfe'];
+    const colorPalette = ['#1976d2', '#00e676', '#ff7043', '#29b6f6', '#ffd54f', '#0d47a1', '#26c6da', '#64b5f6'];
 
     // DOM refs
     const $ = id => document.getElementById(id);
@@ -20,6 +24,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
         await loadCnvIds();
         bindEvents();
+        await checkEditMode();
     });
 
     function bindEvents() {
@@ -33,6 +38,22 @@
         $('btnExportCsv').addEventListener('click', exportCsv);
         $('btnSaveFromDetail').addEventListener('click', onSaveFromDetail);
         $('btnDownloadPng').addEventListener('click', downloadPng);
+
+        // View mode toggle (Actual = scroll, Optimize = fit-to-screen)
+        document.querySelectorAll('#viewModeGroup button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#viewModeGroup button').forEach(b => {
+                    b.classList.remove('active', 'btn-light');
+                    b.classList.add('btn-outline-light');
+                });
+                btn.classList.remove('btn-outline-light');
+                btn.classList.add('active', 'btn-light');
+                viewMode = btn.dataset.mode;
+                if (detailRenderer) {
+                    detailRenderer.setFitMode(viewMode === 'optimize' ? 'fit' : 'width');
+                }
+            });
+        });
 
         // OrderType tabs
         document.querySelectorAll('#orderTypeTabs .nav-link').forEach(tab => {
@@ -55,7 +76,7 @@
                 const el = document.createElement('option');
                 el.value = opt.cnvId;
                 const widths = opt.rollWidths.map(w => w.rollWidth + 'm').join(', ');
-                el.textContent = `[${opt.cnvId}] ${opt.cnvDesc} (${widths})`;
+                el.textContent = `${opt.cnvDesc} (${widths})`;
                 select.appendChild(el);
             });
         } catch (err) {
@@ -89,7 +110,9 @@
         if (!selectedCnvId) return;
         try {
             await fetchApi('/api/sync', { method: 'POST', loadingMessage: 'กำลังโหลดข้อมูล..' });
-            currentOrders = await fetchApi(`/api/orders?cnvId=${encodeURIComponent(selectedCnvId)}`, { loadingMessage: 'กำลังโหลดรายการ..' });
+            let url = `/api/orders?cnvId=${encodeURIComponent(selectedCnvId)}`;
+            if (editingPlanId) url += `&excludePlanId=${editingPlanId}`;
+            currentOrders = await fetchApi(url, { loadingMessage: 'กำลังโหลดรายการ..' });
             currentOrders.forEach(o => o._selected = false);
             expandedGroups = {};
             renderOrdersList();
@@ -152,7 +175,7 @@
         }
 
         const groups = groupByOrno(filtered);
-        const ornoColors = ['#6c5ce7', '#0984e3', '#00b894', '#e17055', '#e84393', '#fdcb6e', '#00cec9', '#a29bfe'];
+        const ornoColors = ['#1976d2', '#0d47a1', '#29b6f6', '#1565c0', '#0277bd', '#01579b', '#039be5', '#64b5f6'];
 
         list.innerHTML = groups.map((g, gi) => {
             const accentColor = ornoColors[gi % ornoColors.length];
@@ -287,6 +310,7 @@
                 loadingMessage: 'กำลังคำนวณ Algorithm..'
             });
             compareResults = response.results || [];
+            totalSelected = response.totalSelected || selectedBarcodes.length;
             renderComparisonCards();
             $('btnExportCsv').classList.remove('d-none');
         } catch (err) {
@@ -326,6 +350,10 @@
             const bestClass = r.isBest ? 'best-card' : '';
             const borderColor = rollWidthColors[r.rollWidth] || '#ddd';
             const canvasId = `mini_${i}`;
+            const skipped = r.skippedCount || 0;
+            const skippedWarn = skipped > 0
+                ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (ใหญ่เกิน ${r.rollWidth}m)</div>`
+                : '';
 
             return `<div class="col-xxl-3 col-xl-4 col-lg-6 card-col" data-rollwidth="${r.rollWidth}">
                 <div class="algorithm-card ${bestClass}" style="border-top: 3px solid ${borderColor};">
@@ -337,27 +365,24 @@
                         <div class="small text-muted">${r.algorithmName} ${bestBadge}</div>
                     </div>
                     <div class="card-body p-3">
+                        ${skippedWarn}
                         <div class="text-center mb-2">
                             <div class="fs-2 fw-bold ${effClass}">${eff}%</div>
                             <div class="small text-muted" style="margin-top:-4px;">ประสิทธิภาพ</div>
                         </div>
                         <div class="mini-canvas-wrap mb-2"><canvas id="${canvasId}"></canvas></div>
                         <div class="row g-1 text-center" style="font-size:0.72rem;">
-                            <div class="col-3">
+                            <div class="col-4">
                                 <div class="text-muted">ตร.ม.</div>
                                 <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
                             </div>
-                            <div class="col-3">
+                            <div class="col-4">
                                 <div class="text-muted">สูญเสีย</div>
                                 <div class="fw-bold text-danger">${formatNumber(r.result.wasteArea)}</div>
                             </div>
-                            <div class="col-3">
-                                <div class="text-muted">ยาว</div>
-                                <div class="fw-bold">${formatNumber(r.result.totalLength)}</div>
-                            </div>
-                            <div class="col-3">
+                            <div class="col-4">
                                 <div class="text-muted">ชิ้น</div>
-                                <div class="fw-bold">${r.result.pieceCount}</div>
+                                <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
                             </div>
                         </div>
                         <div class="mt-2">
@@ -411,56 +436,128 @@
         });
     }
 
-    // ───── Detail Modal ─────
+    // ───── Detail Modal (Digital Dyed Plan Style) ─────
+
+    function renderDetailContent() {
+        const r = compareResults[currentDetailIndex];
+        if (!r) return;
+        const res = r.result;
+        const eff = res.efficiencyPct;
+        const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
+
+        // Header
+        $('detailModalTitle').textContent = `${r.algorithmNameTh} (${r.algorithmName})`;
+        $('detailModalSubtitle').textContent = `Roll Width ${r.rollWidth}m`;
+        $('detailRollWidth').textContent = `${r.rollWidth} m`;
+        $('detailTotalLength').textContent = `${formatNumber(res.totalLength)} m`;
+        $('detailEffBadge').innerHTML = `<span class="${effClass}">${eff}%</span>`;
+
+        // Metrics cards (stacked vertical with colors)
+        const effMetricClass = eff >= 70 ? 'metric-eff-high' : (eff >= 50 ? 'metric-eff-mid' : 'metric-eff-low');
+        const skipped = r.skippedCount || 0;
+        const skippedHtml = skipped > 0
+            ? `<div class="col-12"><div class="skipped-warning mb-2">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                <strong>${skipped} ชิ้นถูกข้าม</strong> - ขนาดใหญ่เกินกว่า roll ${r.rollWidth}m
+                ${(r.skippedBarcodes || []).map(b => `<div class="small mt-1" style="color:#856404;">&bull; ${b}</div>`).join('')}
+               </div></div>`
+            : '';
+
+        $('detailMetrics').innerHTML = `
+            ${skippedHtml}
+            <div class="col-12"><div class="detail-metric ${effMetricClass}">
+                <div class="label">ประสิทธิภาพ</div>
+                <div class="value">${eff}%</div>
+            </div></div>
+            <div class="col-12"><div class="detail-metric metric-used">
+                <div class="label">พื้นที่ใช้จริง</div>
+                <div class="value">${formatNumber(res.usedArea)} <span class="unit">ตร.ม.</span></div>
+            </div></div>
+            <div class="col-12"><div class="detail-metric metric-waste">
+                <div class="label">พื้นที่สูญเสีย</div>
+                <div class="value">${formatNumber(res.wasteArea)} <span class="unit">ตร.ม.</span></div>
+            </div></div>
+            <div class="col-12"><div class="detail-metric metric-length">
+                <div class="label">ความยาวรวม</div>
+                <div class="value">${formatNumber(res.totalLength)} <span class="unit">ม.</span></div>
+            </div></div>
+            <div class="col-12"><div class="detail-metric metric-rolls">
+                <div class="label">จำนวนม้วน</div>
+                <div class="value">1 <span class="unit">ม้วน</span></div>
+            </div></div>
+            <div class="col-12"><div class="detail-metric metric-pieces">
+                <div class="label">จำนวนชิ้น</div>
+                <div class="value">${r.fittableCount || res.pieceCount}/${totalSelected} <span class="unit">ชิ้น</span></div>
+            </div></div>`;
+
+        // ORNO Color Legend
+        const items = res.packedItems || [];
+        const ornoSet = [...new Set(items.map(it => it.orno || ''))];
+        const palette = [
+            '#2196F3','#4CAF50','#FF9800','#E91E63','#9C27B0','#00BCD4',
+            '#FF5722','#3F51B5','#8BC34A','#FFC107','#795548','#607D8B',
+            '#F44336','#009688','#CDDC39','#673AB7','#03A9F4','#FF6F00'
+        ];
+        $('detailOrnoLegend').innerHTML = ornoSet.map((orno, i) => {
+            const color = palette[i % palette.length];
+            const count = items.filter(it => (it.orno || '') === orno).length;
+            return `<div class="d-flex align-items-center gap-2 py-1">
+                <span class="legend-swatch" style="background:${color};"></span>
+                <span class="small fw-medium">${orno || '(ไม่มี)'}</span>
+                <span class="ms-auto badge bg-light text-dark" style="font-size:0.65rem;">${count} ชิ้น</span>
+            </div>`;
+        }).join('');
+
+        // Items table
+        $('detailItems').innerHTML = `
+            <table class="table table-sm table-hover mb-0" style="font-size:0.72rem;">
+                <thead><tr>
+                    <th style="width:30px;">#</th>
+                    <th>Barcode</th>
+                    <th>Order</th>
+                    <th class="text-end">ขนาด</th>
+                    <th class="text-end">ตร.ม.</th>
+                    <th class="text-center">R</th>
+                </tr></thead>
+                <tbody>${items.map((it, i) => {
+                    const area = (it.packWidth * it.packLength).toFixed(2);
+                    return `<tr>
+                        <td>${i + 1}</td>
+                        <td><code class="small" style="color:#0d47a1;">${it.barcodeNo || ''}</code></td>
+                        <td class="small">${it.orno || ''}</td>
+                        <td class="text-end small">${it.packWidth}x${it.packLength}</td>
+                        <td class="text-end small">${area}</td>
+                        <td class="text-center">${it.isRotated ? '<span class="badge bg-warning text-dark" style="font-size:0.6rem;">R</span>' : '-'}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
+    }
+
     function openDetail(index) {
         const r = compareResults[index];
         if (!r) return;
         currentDetailIndex = index;
 
-        $('detailModalTitle').textContent = `${r.algorithmNameTh} (${r.algorithmName}) - ${r.rollWidth}m`;
+        // Reset view mode toggle to current state
+        document.querySelectorAll('#viewModeGroup button').forEach(b => {
+            if (b.dataset.mode === viewMode) {
+                b.classList.remove('btn-outline-light');
+                b.classList.add('active', 'btn-light');
+            } else {
+                b.classList.remove('active', 'btn-light');
+                b.classList.add('btn-outline-light');
+            }
+        });
 
-        // Metrics
-        $('detailMetrics').innerHTML = `
-            <div class="row g-2">
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value ${r.result.efficiencyPct >= 70 ? 'text-success' : 'text-warning'}">${r.result.efficiencyPct}%</div>
-                    <div class="label">ประสิทธิภาพ</div>
-                </div></div>
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value">${formatNumber(r.result.usedArea)}</div>
-                    <div class="label">ตร.ม. ใช้จริง</div>
-                </div></div>
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value text-danger">${formatNumber(r.result.wasteArea)}</div>
-                    <div class="label">สูญเสีย</div>
-                </div></div>
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value">${formatNumber(r.result.totalLength)}m</div>
-                    <div class="label">ความยาวรวม</div>
-                </div></div>
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value">${r.result.pieceCount}</div>
-                    <div class="label">จำนวนชิ้น</div>
-                </div></div>
-                <div class="col-6"><div class="detail-metric">
-                    <div class="value">${r.rollWidth}m</div>
-                    <div class="label">ความกว้างม้วน</div>
-                </div></div>
-            </div>`;
+        // Show detail checkbox
+        const chk = $('chkShowDetail');
+        chk.checked = true;
+        chk.onchange = () => {
+            if (detailRenderer) detailRenderer.setShowDetail(chk.checked);
+        };
 
-        // Items table
-        const items = r.result.packedItems || [];
-        $('detailItems').innerHTML = `
-            <table class="table table-sm table-hover mb-0" style="font-size:0.75rem;">
-                <thead><tr><th>#</th><th>Barcode</th><th>ORNO</th><th>Size</th><th>R</th></tr></thead>
-                <tbody>${items.map((it, i) => `<tr>
-                    <td>${i + 1}</td>
-                    <td><code style="font-size:0.7rem;">${it.barcodeNo || ''}</code></td>
-                    <td>${it.orno || ''}</td>
-                    <td>${it.packWidth}x${it.packLength}</td>
-                    <td>${it.isRotated ? '<i class="bi bi-arrow-repeat text-warning"></i>' : ''}</td>
-                </tr>`).join('')}</tbody>
-            </table>`;
+        // Render content
+        renderDetailContent();
 
         // Show modal then render canvas
         const modal = new bootstrap.Modal($('detailModal'));
@@ -470,6 +567,11 @@
             $('detailModal').removeEventListener('shown.bs.modal', handler);
             if (!detailRenderer) {
                 detailRenderer = new CanvasRenderer('detailCanvas');
+            }
+            detailRenderer.fitMode = viewMode === 'optimize' ? 'fit' : 'width';
+            const scrollContainer = $('detailCanvasContainer');
+            if (scrollContainer) {
+                scrollContainer.style.overflow = viewMode === 'optimize' ? 'hidden' : 'auto';
             }
             detailRenderer.render(r.result);
         });
@@ -492,8 +594,12 @@
 
     async function doSave(r) {
         try {
-            const plan = await fetchApi('/api/plans', {
-                method: 'POST',
+            const isEdit = !!editingPlanId;
+            const url = isEdit ? `/api/plans/${editingPlanId}` : '/api/plans';
+            const method = isEdit ? 'PUT' : 'POST';
+
+            const plan = await fetchApi(url, {
+                method,
                 body: JSON.stringify({
                     canvasTypeId: r.canvasTypeId,
                     rollWidth: r.result.rollWidth,
@@ -505,12 +611,23 @@
                     pieceCount: r.result.pieceCount,
                     packedItems: r.result.packedItems
                 }),
-                loadingMessage: 'กำลังบันทึก..'
+                loadingMessage: isEdit ? 'กำลังอัปเดต..' : 'กำลังบันทึก..'
             });
+
+            if (isEdit) {
+                // Redirect to plan detail after update
+                showAlert('อัปเดตแผนสำเร็จ', 'success');
+                window.location.href = `/Layout/PlanDetail/${editingPlanId}`;
+                return;
+            }
 
             $('savedPlanCode').textContent = plan.planCode;
             $('btnViewPlan').href = `/Layout/PlanDetail/${plan.id}`;
+            $('btnViewReport').href = `/Layout/Report/${plan.id}`;
             new bootstrap.Modal($('successModal')).show();
+
+            // Auto-open report in new tab
+            window.open(`/Layout/Report/${plan.id}`, '_blank');
 
             // Reload orders
             await onLoadOrders();
@@ -519,7 +636,7 @@
             $('colorLegend').classList.add('d-none');
             $('btnExportCsv').classList.add('d-none');
         } catch (err) {
-            showAlert('Save failed: ' + err.message);
+            showAlert('บันทึกไม่สำเร็จ: ' + err.message);
         }
     }
 
@@ -546,6 +663,50 @@
         link.download = `layout-${Date.now()}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
+    }
+
+    // ───── Edit Mode ─────
+    async function checkEditMode() {
+        const params = new URLSearchParams(window.location.search);
+        const planId = params.get('editPlanId');
+        if (!planId) return;
+
+        try {
+            const plan = await fetchApi(`/api/plans/${planId}`, { loadingMessage: 'กำลังโหลดแผน..' });
+            editingPlanId = plan.id;
+            editingPlanCode = plan.planCode;
+
+            // Show edit banner
+            $('editBanner').classList.remove('d-none');
+            $('editPlanCode').textContent = plan.planCode;
+
+            // Auto-select cnvId in dropdown
+            const cnvId = plan.cnvId;
+            if (cnvId) {
+                $('cnvIdSelect').value = cnvId;
+                onCnvIdChange();
+                selectedCnvId = cnvId;
+            }
+
+            // Load orders with excludePlanId
+            await fetchApi('/api/sync', { method: 'POST', loadingMessage: 'กำลังโหลดข้อมูล..' });
+            let url = `/api/orders?cnvId=${encodeURIComponent(cnvId)}`;
+            url += `&excludePlanId=${editingPlanId}`;
+            currentOrders = await fetchApi(url, { loadingMessage: 'กำลังโหลดรายการ..' });
+            currentOrders.forEach(o => o._selected = false);
+
+            // Pre-select barcodes that were in the plan
+            const planBarcodes = new Set((plan.items || []).map(i => i.barcodeNo));
+            currentOrders.forEach(o => {
+                if (planBarcodes.has(o.barcodeNo)) o._selected = true;
+            });
+
+            expandedGroups = {};
+            renderOrdersList();
+            updateSelectedCount();
+        } catch (err) {
+            showAlert('โหลดแผนไม่สำเร็จ: ' + err.message);
+        }
     }
 
 })();

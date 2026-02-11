@@ -13,10 +13,17 @@ public class OrderService : IOrderService
         _db = db;
     }
 
-    public async Task<List<SqlServerOrderDto>> GetOrdersByCnvIdAsync(string cnvId)
+    public Task<List<SqlServerOrderDto>> GetOrdersByCnvIdAsync(string cnvId)
+        => GetOrdersByCnvIdAsync(cnvId, null);
+
+    public async Task<List<SqlServerOrderDto>> GetOrdersByCnvIdAsync(string cnvId, int? excludePlanId)
     {
         // Get already-planned barcodes
-        var plannedBarcodes = (await _db.PlannedBarcodes
+        var query = _db.PlannedBarcodes.AsQueryable();
+        if (excludePlanId.HasValue)
+            query = query.Where(b => b.LayoutPlanId != excludePlanId.Value);
+
+        var plannedBarcodes = (await query
             .Select(b => b.BarcodeNo)
             .ToListAsync()).ToHashSet();
 

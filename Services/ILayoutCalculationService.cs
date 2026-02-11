@@ -13,5 +13,5 @@ public enum PackingAlgorithm
 public interface ILayoutCalculationService
 {
     CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders);
-    CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm);
+    CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm, int gapMm = 150);
 }

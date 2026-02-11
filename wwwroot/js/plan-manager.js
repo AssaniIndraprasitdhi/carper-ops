@@ -26,35 +26,65 @@
 
     function renderTable() {
         const tbody = document.getElementById('plansTableBody');
+        const summary = document.getElementById('plansSummary');
 
         if (plans.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No plans found</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="10" class="text-center py-5">
+                <i class="bi bi-inbox text-muted" style="font-size:2.5rem;opacity:0.4;"></i>
+                <p class="text-muted mt-2 mb-0">ยังไม่มีแผน</p>
+            </td></tr>`;
+            if (summary) summary.textContent = '0 แผน';
             return;
         }
 
+        if (summary) summary.textContent = `${plans.length} แผน`;
+
         tbody.innerHTML = plans.map(plan => {
-            const statusClass = plan.status === 'planned' ? 'bg-primary'
-                : plan.status === 'completed' ? 'bg-success'
-                : plan.status === 'cancelled' ? 'bg-secondary'
-                : 'bg-info';
+            const eff = plan.efficiencyPct;
+            const effColor = eff >= 70 ? '#16a34a' : eff >= 50 ? '#ea580c' : '#dc2626';
+            const effBg = eff >= 70 ? '#f0fdf4' : eff >= 50 ? '#fff7ed' : '#fef2f2';
+
+            const statusMap = {
+                planned: { bg: '#eff6ff', color: '#2563eb', icon: 'bi-clock', label: 'Planned' },
+                completed: { bg: '#f0fdf4', color: '#16a34a', icon: 'bi-check-circle', label: 'Completed' },
+                cancelled: { bg: '#f3f4f6', color: '#6b7280', icon: 'bi-x-circle', label: 'Cancelled' },
+            };
+            const st = statusMap[plan.status] || statusMap.planned;
 
             return `
-                <tr>
-                    <td><strong>${plan.planCode}</strong></td>
-                    <td>${plan.canvasDesc || '-'}</td>
-                    <td>${plan.rollWidth} m</td>
-                    <td>${plan.pieceCount}</td>
-                    <td><span class="fw-bold text-success">${plan.efficiencyPct}%</span></td>
-                    <td>${formatNumber(plan.usedArea)}</td>
-                    <td>${formatNumber(plan.wasteArea)}</td>
-                    <td><span class="badge ${statusClass}">${plan.status}</span></td>
-                    <td>${plan.createdAt}</td>
+                <tr class="plans-row" onclick="window.location='/Layout/PlanDetail/${plan.id}'" style="cursor:pointer;">
+                    <td class="ps-4">
+                        <div class="fw-semibold" style="color:#1e3a5f;">${plan.planCode}</div>
+                    </td>
                     <td>
-                        <a href="/Layout/PlanDetail/${plan.id}" class="btn btn-sm btn-outline-primary me-1" title="View">
-                            <i class="bi bi-eye"></i>
-                        </a>
-                        <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${plan.id}" data-code="${plan.planCode}" title="Delete">
-                            <i class="bi bi-trash"></i>
+                        <span class="text-muted">${plan.canvasDesc || '-'}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="fw-medium">${plan.rollWidth}</span><span class="text-muted small"> m</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="fw-medium">${plan.pieceCount}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="plans-eff-badge" style="background:${effBg};color:${effColor};">${eff}%</span>
+                    </td>
+                    <td class="text-end">
+                        <span class="fw-medium">${formatNumber(plan.usedArea)}</span><span class="text-muted small"> ตร.ม.</span>
+                    </td>
+                    <td class="text-end">
+                        <span class="text-danger fw-medium">${formatNumber(plan.wasteArea)}</span><span class="text-muted small"> ตร.ม.</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="plans-status-badge" style="background:${st.bg};color:${st.color};">
+                            <i class="bi ${st.icon} me-1" style="font-size:0.7rem;"></i>${st.label}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="text-muted small">${plan.createdAt}</span>
+                    </td>
+                    <td class="text-center pe-4" onclick="event.stopPropagation();">
+                        <button class="plans-action-btn btn-delete" data-id="${plan.id}" data-code="${plan.planCode}" title="ลบ">
+                            <i class="bi bi-trash3"></i>
                         </button>
                     </td>
                 </tr>

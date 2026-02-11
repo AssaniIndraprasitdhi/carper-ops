@@ -102,6 +102,80 @@ public class LayoutPlanService : ILayoutPlanService
         }
     }
 
+    public async Task<LayoutPlan> UpdateAsync(int id, SavePlanRequestDto request)
+    {
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var plan = await _db.LayoutPlans.FindAsync(id)
+                ?? throw new KeyNotFoundException($"Plan {id} not found");
+
+            // Delete old items and planned barcodes
+            var oldItems = _db.LayoutPlanItems.Where(i => i.LayoutPlanId == id);
+            _db.LayoutPlanItems.RemoveRange(oldItems);
+
+            var oldBarcodes = _db.PlannedBarcodes.Where(b => b.LayoutPlanId == id);
+            _db.PlannedBarcodes.RemoveRange(oldBarcodes);
+
+            // Update plan fields (keep PlanCode)
+            plan.CanvasTypeId = request.CanvasTypeId;
+            plan.RollWidth = request.RollWidth;
+            plan.TotalLength = request.TotalLength;
+            plan.TotalArea = request.TotalArea;
+            plan.UsedArea = request.UsedArea;
+            plan.WasteArea = request.WasteArea;
+            plan.EfficiencyPct = request.EfficiencyPct;
+            plan.PieceCount = request.PieceCount;
+            plan.LayoutJson = JsonSerializer.Serialize(request.PackedItems);
+            plan.Notes = request.Notes;
+            plan.UpdatedAt = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync();
+
+            // Insert new items and planned barcodes
+            foreach (var item in request.PackedItems)
+            {
+                _db.LayoutPlanItems.Add(new LayoutPlanItem
+                {
+                    LayoutPlanId = plan.Id,
+                    BarcodeNo = item.BarcodeNo,
+                    Orno = item.ORNO,
+                    ListNo = item.ListNo,
+                    ItemNo = item.ItemNo,
+                    CnvId = item.CnvID,
+                    CnvDesc = item.CnvDesc,
+                    AsPlan = item.ASPLAN,
+                    Width = item.OriginalWidth,
+                    Length = item.OriginalLength,
+                    Area = item.OriginalWidth * item.OriginalLength,
+                    Qty = item.Qty ?? 1,
+                    OrderType = item.OrderType,
+                    PackX = item.PackX,
+                    PackY = item.PackY,
+                    PackWidth = item.PackWidth,
+                    PackLength = item.PackLength,
+                    IsRotated = item.IsRotated,
+                });
+
+                _db.PlannedBarcodes.Add(new PlannedBarcode
+                {
+                    BarcodeNo = item.BarcodeNo,
+                    LayoutPlanId = plan.Id,
+                    PlannedAt = DateTime.UtcNow
+                });
+            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return plan;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
     public async Task<bool> DeleteAsync(int id)
     {
         var plan = await _db.LayoutPlans.FindAsync(id);

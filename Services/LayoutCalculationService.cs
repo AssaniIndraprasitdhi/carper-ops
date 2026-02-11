@@ -7,9 +7,9 @@ public class LayoutCalculationService : ILayoutCalculationService
     private const int SCALE = 1000; // meters to mm for precision
 
     public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders)
-        => Calculate(rollWidth, selectedOrders, PackingAlgorithm.Standard);
+        => Calculate(rollWidth, selectedOrders, PackingAlgorithm.Standard, 150);
 
-    public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm)
+    public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm, int gapMm = 150)
     {
         var rollWidthMm = (int)(rollWidth * SCALE);
         var items = selectedOrders.Select((order, index) => new PackItem
@@ -30,11 +30,11 @@ public class LayoutCalculationService : ILayoutCalculationService
 
         var packed = algorithm switch
         {
-            PackingAlgorithm.Standard => ShelfPack(rollWidthMm, items),
-            PackingAlgorithm.Rotated => ShelfPackRotated(rollWidthMm, items),
-            PackingAlgorithm.SizeBased => ShelfPackSizeBased(rollWidthMm, items),
-            PackingAlgorithm.CutCorner => ShelfPackCutCorner(rollWidthMm, items),
-            _ => ShelfPack(rollWidthMm, items)
+            PackingAlgorithm.Standard => ShelfPack(rollWidthMm, items, gapMm),
+            PackingAlgorithm.Rotated => ShelfPackRotated(rollWidthMm, items, gapMm),
+            PackingAlgorithm.SizeBased => ShelfPackSizeBased(rollWidthMm, items, gapMm),
+            PackingAlgorithm.CutCorner => ShelfPackCutCorner(rollWidthMm, items, gapMm),
+            _ => ShelfPack(rollWidthMm, items, gapMm)
         };
 
         return BuildResult(rollWidth, selectedOrders, packed);
@@ -95,9 +95,9 @@ public class LayoutCalculationService : ILayoutCalculationService
         };
     }
 
-    // ───────── Algorithm 1: Standard FFD (existing) ─────────
+    // ───────── Algorithm 1: Standard FFD ─────────
 
-    private List<PlacedItem> ShelfPack(int rollWidthMm, List<PackItem> items)
+    private List<PlacedItem> ShelfPack(int rollWidthMm, List<PackItem> items, int gap)
     {
         var sorted = items.OrderByDescending(i => Math.Max(i.WidthMm, i.LengthMm)).ToList();
         var shelves = new List<Shelf>();
@@ -119,8 +119,8 @@ public class LayoutCalculationService : ILayoutCalculationService
                             Index = item.Index, X = shelf.CurrentX, Y = shelf.Y,
                             PlacedWidth = w, PlacedLength = h, IsRotated = rotated
                         });
-                        shelf.CurrentX += w;
-                        shelf.RemainingWidth -= w;
+                        shelf.CurrentX += w + gap;
+                        shelf.RemainingWidth -= (w + gap);
                         placed = true;
                         break;
                     }
@@ -131,13 +131,12 @@ public class LayoutCalculationService : ILayoutCalculationService
             if (!placed)
             {
                 var (bestW, bestH, bestRotated) = orientations.First();
-                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height : 0;
-                var newShelf = new Shelf
+                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height + gap : 0;
+                shelves.Add(new Shelf
                 {
                     Y = shelfY, Height = bestH,
-                    CurrentX = bestW, RemainingWidth = rollWidthMm - bestW
-                };
-                shelves.Add(newShelf);
+                    CurrentX = bestW + gap, RemainingWidth = rollWidthMm - bestW - gap
+                });
                 result.Add(new PlacedItem
                 {
                     Index = item.Index, X = 0, Y = shelfY,
@@ -151,7 +150,7 @@ public class LayoutCalculationService : ILayoutCalculationService
 
     // ───────── Algorithm 2: Rotated (minimize shelf height) ─────────
 
-    private List<PlacedItem> ShelfPackRotated(int rollWidthMm, List<PackItem> items)
+    private List<PlacedItem> ShelfPackRotated(int rollWidthMm, List<PackItem> items, int gap)
     {
         var sorted = items.OrderByDescending(i => Math.Max(i.WidthMm, i.LengthMm)).ToList();
         var shelves = new List<Shelf>();
@@ -160,7 +159,6 @@ public class LayoutCalculationService : ILayoutCalculationService
         foreach (var item in sorted)
         {
             bool placed = false;
-            // Prefer orientation with smallest height (H) to minimize shelf height
             var orientations = GetOrientationsMinHeight(item, rollWidthMm);
 
             foreach (var shelf in shelves)
@@ -174,8 +172,8 @@ public class LayoutCalculationService : ILayoutCalculationService
                             Index = item.Index, X = shelf.CurrentX, Y = shelf.Y,
                             PlacedWidth = w, PlacedLength = h, IsRotated = rotated
                         });
-                        shelf.CurrentX += w;
-                        shelf.RemainingWidth -= w;
+                        shelf.CurrentX += w + gap;
+                        shelf.RemainingWidth -= (w + gap);
                         placed = true;
                         break;
                     }
@@ -186,11 +184,11 @@ public class LayoutCalculationService : ILayoutCalculationService
             if (!placed)
             {
                 var (bestW, bestH, bestRotated) = orientations.First();
-                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height : 0;
+                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height + gap : 0;
                 shelves.Add(new Shelf
                 {
                     Y = shelfY, Height = bestH,
-                    CurrentX = bestW, RemainingWidth = rollWidthMm - bestW
+                    CurrentX = bestW + gap, RemainingWidth = rollWidthMm - bestW - gap
                 });
                 result.Add(new PlacedItem
                 {
@@ -205,9 +203,8 @@ public class LayoutCalculationService : ILayoutCalculationService
 
     // ───────── Algorithm 3: Size-based (group similar sizes) ─────────
 
-    private List<PlacedItem> ShelfPackSizeBased(int rollWidthMm, List<PackItem> items)
+    private List<PlacedItem> ShelfPackSizeBased(int rollWidthMm, List<PackItem> items, int gap)
     {
-        // Group items by similar area (within 30% of each other)
         var sortedByArea = items.OrderByDescending(i => i.WidthMm * i.LengthMm).ToList();
         var groups = new List<List<PackItem>>();
         var used = new HashSet<int>();
@@ -215,7 +212,6 @@ public class LayoutCalculationService : ILayoutCalculationService
         foreach (var item in sortedByArea)
         {
             if (used.Contains(item.Index)) continue;
-
             var group = new List<PackItem> { item };
             used.Add(item.Index);
             long itemArea = (long)item.WidthMm * item.LengthMm;
@@ -233,7 +229,6 @@ public class LayoutCalculationService : ILayoutCalculationService
             groups.Add(group);
         }
 
-        // Pack each group using shelf packing, stacking group shelves vertically
         var shelves = new List<Shelf>();
         var result = new List<PlacedItem>();
 
@@ -256,8 +251,8 @@ public class LayoutCalculationService : ILayoutCalculationService
                                 Index = item.Index, X = shelf.CurrentX, Y = shelf.Y,
                                 PlacedWidth = w, PlacedLength = h, IsRotated = rotated
                             });
-                            shelf.CurrentX += w;
-                            shelf.RemainingWidth -= w;
+                            shelf.CurrentX += w + gap;
+                            shelf.RemainingWidth -= (w + gap);
                             placed = true;
                             break;
                         }
@@ -268,11 +263,11 @@ public class LayoutCalculationService : ILayoutCalculationService
                 if (!placed)
                 {
                     var (bestW, bestH, bestRotated) = orientations.First();
-                    int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height : 0;
+                    int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height + gap : 0;
                     shelves.Add(new Shelf
                     {
                         Y = shelfY, Height = bestH,
-                        CurrentX = bestW, RemainingWidth = rollWidthMm - bestW
+                        CurrentX = bestW + gap, RemainingWidth = rollWidthMm - bestW - gap
                     });
                     result.Add(new PlacedItem
                     {
@@ -288,11 +283,11 @@ public class LayoutCalculationService : ILayoutCalculationService
 
     // ───────── Algorithm 4: Cut-corner (fill gaps between shelves) ─────────
 
-    private List<PlacedItem> ShelfPackCutCorner(int rollWidthMm, List<PackItem> items)
+    private List<PlacedItem> ShelfPackCutCorner(int rollWidthMm, List<PackItem> items, int gap)
     {
         var sorted = items.OrderByDescending(i => Math.Max(i.WidthMm, i.LengthMm)).ToList();
         var shelves = new List<Shelf>();
-        var gaps = new List<GapRegion>(); // track gaps above items shorter than shelf height
+        var freeGaps = new List<GapRegion>();
         var result = new List<PlacedItem>();
 
         foreach (var item in sorted)
@@ -300,29 +295,28 @@ public class LayoutCalculationService : ILayoutCalculationService
             bool placed = false;
             var orientations = GetOrientations(item, rollWidthMm);
 
-            // Try gaps first (fill spaces above shorter items)
-            foreach (var gap in gaps)
+            // Try gaps first
+            foreach (var fg in freeGaps)
             {
-                if (gap.Used) continue;
+                if (fg.Used) continue;
                 foreach (var (w, h, rotated) in orientations)
                 {
-                    if (w <= gap.Width && h <= gap.Height)
+                    if (w <= fg.Width && h <= fg.Height)
                     {
                         result.Add(new PlacedItem
                         {
-                            Index = item.Index, X = gap.X, Y = gap.Y,
+                            Index = item.Index, X = fg.X, Y = fg.Y + gap,
                             PlacedWidth = w, PlacedLength = h, IsRotated = rotated
                         });
-                        // Split remaining gap
-                        if (gap.Width - w > 0)
+                        if (fg.Width - w - gap > 0)
                         {
-                            gaps.Add(new GapRegion
+                            freeGaps.Add(new GapRegion
                             {
-                                X = gap.X + w, Y = gap.Y,
-                                Width = gap.Width - w, Height = gap.Height
+                                X = fg.X + w + gap, Y = fg.Y,
+                                Width = fg.Width - w - gap, Height = fg.Height
                             });
                         }
-                        gap.Used = true;
+                        fg.Used = true;
                         placed = true;
                         break;
                     }
@@ -344,17 +338,16 @@ public class LayoutCalculationService : ILayoutCalculationService
                             Index = item.Index, X = shelf.CurrentX, Y = shelf.Y,
                             PlacedWidth = w, PlacedLength = h, IsRotated = rotated
                         });
-                        // Track gap above this item if shorter than shelf
-                        if (h < shelf.Height)
+                        if (h + gap < shelf.Height)
                         {
-                            gaps.Add(new GapRegion
+                            freeGaps.Add(new GapRegion
                             {
                                 X = shelf.CurrentX, Y = shelf.Y + h,
                                 Width = w, Height = shelf.Height - h
                             });
                         }
-                        shelf.CurrentX += w;
-                        shelf.RemainingWidth -= w;
+                        shelf.CurrentX += w + gap;
+                        shelf.RemainingWidth -= (w + gap);
                         placed = true;
                         break;
                     }
@@ -365,11 +358,11 @@ public class LayoutCalculationService : ILayoutCalculationService
             if (!placed)
             {
                 var (bestW, bestH, bestRotated) = orientations.First();
-                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height : 0;
+                int shelfY = shelves.Count > 0 ? shelves.Last().Y + shelves.Last().Height + gap : 0;
                 shelves.Add(new Shelf
                 {
                     Y = shelfY, Height = bestH,
-                    CurrentX = bestW, RemainingWidth = rollWidthMm - bestW
+                    CurrentX = bestW + gap, RemainingWidth = rollWidthMm - bestW - gap
                 });
                 result.Add(new PlacedItem
                 {
@@ -391,7 +384,6 @@ public class LayoutCalculationService : ILayoutCalculationService
             orientations.Add((item.WidthMm, item.LengthMm, false));
         if (item.LengthMm <= rollWidthMm && item.LengthMm != item.WidthMm)
             orientations.Add((item.LengthMm, item.WidthMm, true));
-        // Prefer wider across roll
         orientations.Sort((a, b) => b.W.CompareTo(a.W));
         return orientations;
     }
@@ -403,44 +395,14 @@ public class LayoutCalculationService : ILayoutCalculationService
             orientations.Add((item.WidthMm, item.LengthMm, false));
         if (item.LengthMm <= rollWidthMm && item.LengthMm != item.WidthMm)
             orientations.Add((item.LengthMm, item.WidthMm, true));
-        // Prefer smallest height to minimize shelf height
         orientations.Sort((a, b) => a.H.CompareTo(b.H));
         return orientations;
     }
 
     // ───────── Private Types ─────────
 
-    private class PackItem
-    {
-        public int Index { get; set; }
-        public int WidthMm { get; set; }
-        public int LengthMm { get; set; }
-    }
-
-    private class PlacedItem
-    {
-        public int Index { get; set; }
-        public int X { get; set; }
-        public int Y { get; set; }
-        public int PlacedWidth { get; set; }
-        public int PlacedLength { get; set; }
-        public bool IsRotated { get; set; }
-    }
-
-    private class Shelf
-    {
-        public int Y { get; set; }
-        public int Height { get; set; }
-        public int CurrentX { get; set; }
-        public int RemainingWidth { get; set; }
-    }
-
-    private class GapRegion
-    {
-        public int X { get; set; }
-        public int Y { get; set; }
-        public int Width { get; set; }
-        public int Height { get; set; }
-        public bool Used { get; set; }
-    }
+    private class PackItem { public int Index; public int WidthMm; public int LengthMm; }
+    private class PlacedItem { public int Index; public int X; public int Y; public int PlacedWidth; public int PlacedLength; public bool IsRotated; }
+    private class Shelf { public int Y; public int Height; public int CurrentX; public int RemainingWidth; }
+    private class GapRegion { public int X; public int Y; public int Width; public int Height; public bool Used; }
 }

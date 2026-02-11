@@ -12,12 +12,12 @@ public class OrdersApiController : ControllerBase
     public OrdersApiController(IOrderService service) => _service = service;
 
     [HttpGet]
-    public async Task<IActionResult> GetByCanvasType([FromQuery] string cnvId)
+    public async Task<IActionResult> GetByCanvasType([FromQuery] string cnvId, [FromQuery] int? excludePlanId = null)
     {
         if (string.IsNullOrWhiteSpace(cnvId))
             return BadRequest("cnvId is required");
 
-        var orders = await _service.GetOrdersByCnvIdAsync(cnvId);
+        var orders = await _service.GetOrdersByCnvIdAsync(cnvId, excludePlanId);
         return Ok(orders);
     }
 }

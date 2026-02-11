@@ -44,6 +44,8 @@ public class PlansApiController : ControllerBase
         {
             plan.Id,
             plan.PlanCode,
+            plan.CanvasTypeId,
+            CnvId = plan.CanvasType?.CnvId,
             CanvasDesc = plan.CanvasType?.CnvDesc,
             plan.RollWidth,
             plan.TotalLength,
@@ -87,6 +89,23 @@ public class PlansApiController : ControllerBase
 
         var plan = await _service.SaveAsync(request);
         return Ok(new { plan.Id, plan.PlanCode, Message = "Plan saved successfully" });
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, [FromBody] SavePlanRequestDto request)
+    {
+        if (request.PackedItems == null || request.PackedItems.Count == 0)
+            return BadRequest("No items to save");
+
+        try
+        {
+            var plan = await _service.UpdateAsync(id, request);
+            return Ok(new { plan.Id, plan.PlanCode, Message = "Plan updated successfully" });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
     }
 
     [HttpDelete("{id}")]

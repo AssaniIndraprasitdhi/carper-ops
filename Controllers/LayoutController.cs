@@ -19,4 +19,11 @@ public class LayoutController : Controller
         if (plan == null) return NotFound();
         return View(plan);
     }
+
+    public async Task<IActionResult> Report(int id)
+    {
+        var plan = await _planService.GetByIdAsync(id);
+        if (plan == null) return NotFound();
+        return View(plan);
+    }
 }

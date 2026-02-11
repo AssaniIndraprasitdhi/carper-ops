@@ -1,0 +1,267 @@
+@model Capet_OPS.Models.Entities.LayoutPlan
+@{
+    Layout = null; // standalone printable page
+    var items = Model.Items.OrderBy(i => i.Orno).ThenBy(i => i.BarcodeNo).ToList();
+    var groups = items.GroupBy(i => i.Orno ?? "(ไม่มี Order)").ToList();
+}
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Report - @Model.PlanCode</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Kanit', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #fff; color: #2d3436; font-size: 11px; padding: 10mm; }
+
+        .report-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 3px solid #0d2137; padding-bottom: 10px; margin-bottom: 15px;
+        }
+        .report-header h1 { font-size: 20px; color: #0d2137; font-weight: 700; }
+        .report-header .subtitle { font-size: 11px; color: #666; }
+        .report-header .plan-code {
+            font-size: 16px; font-weight: 700; color: #0d47a1;
+            background: #e3f2fd; padding: 6px 14px; border-radius: 8px;
+        }
+
+        .info-grid {
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+            margin-bottom: 15px;
+        }
+        .info-box {
+            background: #f8f9fa; border-radius: 8px; padding: 8px 10px;
+            text-align: center; border: 1px solid #eee;
+        }
+        .info-box .label { font-size: 9px; color: #888; text-transform: uppercase; }
+        .info-box .value { font-size: 16px; font-weight: 700; }
+        .info-box .unit { font-size: 9px; color: #999; }
+        .val-green { color: #00b894; }
+        .val-red { color: #e17055; }
+        .val-blue { color: #0984e3; }
+        .val-navy { color: #0d47a1; }
+        .val-orange { color: #e67e22; }
+
+        .section-title {
+            font-size: 13px; font-weight: 600; color: #0d2137;
+            margin: 15px 0 8px; padding-bottom: 4px;
+            border-bottom: 2px solid #0d47a1;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .section-title .icon { color: #0d47a1; }
+
+        .canvas-container {
+            text-align: center; margin-bottom: 15px;
+            border: 1px solid #eee; border-radius: 8px; padding: 10px;
+            background: #fafafa;
+        }
+        .canvas-container canvas { max-width: 100%; }
+
+        .group-header {
+            background: linear-gradient(135deg, #e3f2fd, #e8f4fd);
+            padding: 6px 10px; font-size: 11px; font-weight: 600;
+            border-radius: 6px; margin-top: 8px; margin-bottom: 4px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .group-header .orno-name { color: #0d47a1; }
+        .group-header .group-count { color: #636e72; font-weight: 400; font-size: 10px; }
+        .group-header .group-type {
+            font-size: 9px; padding: 2px 8px; border-radius: 10px; color: #fff;
+        }
+        .type-order { background: #0d47a1; }
+        .type-sample { background: #ad1457; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        table th {
+            background: #f0f0f0; color: #555; font-weight: 600; font-size: 9px;
+            text-transform: uppercase; padding: 5px 6px; text-align: left;
+            border-bottom: 2px solid #ddd;
+        }
+        table td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; }
+        table tr:hover { background: #fafafa; }
+        .mono { font-family: 'Courier New', monospace; font-size: 9px; color: #0d47a1; font-weight: 600; }
+        .rotated-badge { background: #fff3e0; color: #e67e22; font-size: 8px; padding: 1px 5px; border-radius: 3px; }
+        .text-right { text-align: right; }
+
+        .summary-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 12px; padding-top: 8px; border-top: 2px solid #0d2137;
+            font-size: 10px; color: #666;
+        }
+        .summary-row .total { font-size: 12px; font-weight: 700; color: #0d2137; }
+
+        .footer {
+            margin-top: 20px; padding-top: 8px; border-top: 1px solid #ddd;
+            display: flex; justify-content: space-between; font-size: 9px; color: #aaa;
+        }
+
+        .no-print { margin-bottom: 15px; text-align: center; }
+        .no-print button {
+            padding: 8px 24px; border: none; border-radius: 8px; cursor: pointer;
+            font-family: 'Kanit'; font-size: 13px; font-weight: 500; margin: 0 4px;
+        }
+        .btn-print { background: linear-gradient(135deg, #0d47a1, #1976d2); color: #fff; }
+        .btn-back { background: #eee; color: #555; }
+
+        @@media print {
+            body { padding: 5mm; }
+            .no-print { display: none !important; }
+            .info-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .group-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .section-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .group-type { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Print Controls -->
+    <div class="no-print">
+        <button class="btn-print" onclick="window.print()">&#128424; พิมพ์ / บันทึก PDF</button>
+        <button class="btn-back" onclick="window.close()">ปิดหน้านี้</button>
+    </div>
+
+    <!-- Header -->
+    <div class="report-header">
+        <div>
+            <h1>CAPET-OPS Layout Report</h1>
+            <div class="subtitle">รายงานแผนการวางผ้า | @Model.CanvasType?.CnvDesc</div>
+        </div>
+        <div class="plan-code">@Model.PlanCode</div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="info-grid">
+        <div class="info-box">
+            <div class="label">ประสิทธิภาพ</div>
+            <div class="value val-green">@Model.EfficiencyPct%</div>
+        </div>
+        <div class="info-box">
+            <div class="label">จำนวนชิ้น</div>
+            <div class="value val-navy">@Model.PieceCount</div>
+            <div class="unit">ชิ้น</div>
+        </div>
+        <div class="info-box">
+            <div class="label">ความกว้างม้วน</div>
+            <div class="value val-blue">@Model.RollWidth</div>
+            <div class="unit">เมตร</div>
+        </div>
+        <div class="info-box">
+            <div class="label">ความยาวรวม</div>
+            <div class="value val-orange">@Model.TotalLength</div>
+            <div class="unit">เมตร</div>
+        </div>
+        <div class="info-box">
+            <div class="label">พท. ใช้จริง</div>
+            <div class="value val-blue">@Model.UsedArea</div>
+            <div class="unit">ตร.ม.</div>
+        </div>
+        <div class="info-box">
+            <div class="label">สูญเสีย</div>
+            <div class="value val-red">@Model.WasteArea</div>
+            <div class="unit">ตร.ม.</div>
+        </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="section-title"><span class="icon">&#9632;</span> แผนผังการวางผ้า</div>
+    <div class="canvas-container">
+        <canvas id="reportCanvas"></canvas>
+    </div>
+
+    <!-- Items Grouped by ORNO -->
+    <div class="section-title"><span class="icon">&#9632;</span> รายการชิ้นงาน (@Model.Items.Count รายการ, @groups.Count Orders)</div>
+
+    @{ int seq = 1; }
+    @foreach (var grp in groups)
+    {
+        var grpItems = grp.ToList();
+        var firstItem = grpItems.First();
+        var grpArea = grpItems.Sum(i => i.Area);
+        <div class="group-header">
+            <div>
+                <span class="orno-name">@grp.Key</span>
+                <span class="group-count">(@grpItems.Count ชิ้น | @grpArea.ToString("N2") ตร.ม.)</span>
+            </div>
+            <span class="group-type @(firstItem.OrderType == "Order" ? "type-order" : "type-sample")">
+                @firstItem.OrderType
+            </span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:30px;">#</th>
+                    <th>Barcode</th>
+                    <th>Item No</th>
+                    <th class="text-right">กว้าง (m)</th>
+                    <th class="text-right">ยาว (m)</th>
+                    <th class="text-right">พท. (ตร.ม.)</th>
+                    <th class="text-right">จำนวน</th>
+                    <th>ตำแหน่ง</th>
+                    <th>หมุน</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in grpItems)
+                {
+                    <tr>
+                        <td>@seq</td>
+                        <td class="mono">@item.BarcodeNo</td>
+                        <td>@item.ItemNo</td>
+                        <td class="text-right">@item.Width</td>
+                        <td class="text-right">@item.Length</td>
+                        <td class="text-right">@((item.Area).ToString("N2"))</td>
+                        <td class="text-right">@item.Qty</td>
+                        <td>(@item.PackX, @item.PackY) → @(item.PackWidth)x@(item.PackLength)</td>
+                        <td>@(item.IsRotated ? Html.Raw("<span class='rotated-badge'>R</span>") : Html.Raw("-"))</td>
+                    </tr>
+                    seq++;
+                }
+            </tbody>
+        </table>
+    }
+
+    <!-- Summary -->
+    <div class="summary-row">
+        <div>วันที่สร้าง: @Model.CreatedAt.ToString("yyyy-MM-dd HH:mm") | สถานะ: @Model.Status.ToUpper()</div>
+        <div class="total">รวม @Model.Items.Count ชิ้น | @Model.UsedArea ตร.ม. | ประสิทธิภาพ @Model.EfficiencyPct%</div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <span>CAPET-OPS Layout Planning System</span>
+        <span>พิมพ์เมื่อ: <script>document.write(new Date().toLocaleString('th-TH'))</script></span>
+    </div>
+
+    <!-- Canvas Script -->
+    <script src="/js/canvas-renderer.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const planData = @Html.Raw(Model.LayoutJson ?? "[]");
+            const rollWidth = @Model.RollWidth;
+            const totalLength = @Model.TotalLength;
+
+            if (planData && planData.length > 0) {
+                const result = {
+                    rollWidth: rollWidth,
+                    totalLength: totalLength,
+                    packedItems: planData.map(item => ({
+                        packX: item.PackX ?? item.packX,
+                        packY: item.PackY ?? item.packY,
+                        packWidth: item.PackWidth ?? item.packWidth,
+                        packLength: item.PackLength ?? item.packLength,
+                        orno: item.ORNO ?? item.orno ?? item.oRNO,
+                        barcodeNo: item.BarcodeNo ?? item.barcodeNo,
+                        originalWidth: item.OriginalWidth ?? item.originalWidth,
+                        originalLength: item.OriginalLength ?? item.originalLength,
+                        isRotated: item.IsRotated ?? item.isRotated
+                    }))
+                };
+                const renderer = new CanvasRenderer('reportCanvas');
+                renderer.render(result);
+            }
+        });
+    </script>
+</body>
+</html>
