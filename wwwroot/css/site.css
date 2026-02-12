@@ -172,7 +172,7 @@ body.fullscreen-page .main-fullscreen {
     border-radius: 10px;
 }
 
-/* Subitems (on navy) */
+/* Subitems (on navy sidebar) */
 .order-group-items {
     background: rgba(0,0,0,0.15);
 }
@@ -205,6 +205,52 @@ body.fullscreen-page .main-fullscreen {
     font-size: 0.65rem;
     color: rgba(255,255,255,0.45);
     font-weight: 500;
+}
+
+/* Tag dimension inputs (on navy sidebar) */
+.tag-input-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 3px;
+}
+.tag-label {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.45);
+    font-weight: 500;
+    min-width: 22px;
+}
+.tag-input {
+    width: 48px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+}
+.tag-input::-webkit-outer-spin-button,
+.tag-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.tag-input::placeholder {
+    color: rgba(255,255,255,0.3);
+}
+.tag-input:focus {
+    border-color: #42a5f5;
+    background: rgba(255,255,255,0.15);
+}
+.tag-x {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.35);
+}
+.tag-unit {
+    font-size: 0.58rem;
+    color: rgba(255,255,255,0.35);
 }
 
 /* Legacy order-item */

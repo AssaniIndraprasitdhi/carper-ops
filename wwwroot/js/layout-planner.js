@@ -191,10 +191,23 @@
                 const origIdx = currentOrders.indexOf(o);
                 const checked = o._selected ? 'checked' : '';
                 const selClass = o._selected ? 'selected' : '';
+                const tw = o._tagWidth ?? '';
+                const tl = o._tagLength ?? '';
                 return `<div class="order-subitem ${selClass}" data-idx="${origIdx}">
                     <input type="checkbox" class="form-check-input order-cb" data-idx="${origIdx}" ${checked}>
-                    <span class="barcode">${o.barcodeNo || ''}</span>
-                    <span class="order-size">${formatNumber(o.width)}x${formatNumber(o.length)}m</span>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="barcode">${o.barcodeNo || ''}</span>
+                            <span class="order-size">${formatNumber(o.width)}x${formatNumber(o.length)}m</span>
+                        </div>
+                        <div class="tag-input-row" onclick="event.stopPropagation();">
+                            <span class="tag-label">Tag</span>
+                            <input type="number" class="tag-input tag-w" data-idx="${origIdx}" value="${tw}" placeholder="W" step="0.01">
+                            <span class="tag-x">x</span>
+                            <input type="number" class="tag-input tag-l" data-idx="${origIdx}" value="${tl}" placeholder="L" step="0.01">
+                            <span class="tag-unit">m</span>
+                        </div>
+                    </div>
                 </div>`;
             }).join('');
 
@@ -270,11 +283,25 @@
         // Bind subitem row click
         list.querySelectorAll('.order-subitem').forEach(el => {
             el.addEventListener('click', e => {
-                if (e.target.type === 'checkbox') return;
+                if (e.target.type === 'checkbox' || e.target.type === 'number') return;
                 const idx = parseInt(el.dataset.idx);
                 currentOrders[idx]._selected = !currentOrders[idx]._selected;
                 renderOrdersList();
                 updateSelectedCount();
+            });
+        });
+
+        // Bind tag inputs
+        list.querySelectorAll('.tag-w').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const idx = parseInt(inp.dataset.idx);
+                currentOrders[idx]._tagWidth = inp.value ? parseFloat(inp.value) : null;
+            });
+        });
+        list.querySelectorAll('.tag-l').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const idx = parseInt(inp.dataset.idx);
+                currentOrders[idx]._tagLength = inp.value ? parseFloat(inp.value) : null;
             });
         });
     }
@@ -311,11 +338,33 @@
             });
             compareResults = response.results || [];
             totalSelected = response.totalSelected || selectedBarcodes.length;
+            enrichPackedItemsWithTags();
             renderComparisonCards();
             $('btnExportCsv').classList.remove('d-none');
         } catch (err) {
             showAlert('คำนวณไม่สำเร็จ: ' + err.message);
         }
+    }
+
+    // ───── Enrich packed items with tag dimensions from sidebar ─────
+    function enrichPackedItemsWithTags() {
+        // Build lookup: barcodeNo → { tagWidth, tagLength }
+        const tagMap = {};
+        currentOrders.forEach(o => {
+            if (o._tagWidth || o._tagLength) {
+                tagMap[o.barcodeNo] = { tagWidth: o._tagWidth || null, tagLength: o._tagLength || null };
+            }
+        });
+
+        compareResults.forEach(cr => {
+            (cr.result.packedItems || []).forEach(item => {
+                const tag = tagMap[item.barcodeNo];
+                if (tag) {
+                    item._tagWidth = tag.tagWidth;
+                    item._tagLength = tag.tagLength;
+                }
+            });
+        });
     }
 
     // ───── Render Algorithm Comparison Cards ─────
@@ -391,12 +440,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="card-footer bg-white d-flex gap-1 py-2 px-3">
-                        <button class="btn btn-sm btn-outline-primary flex-fill btn-detail" data-idx="${i}">
+                    <div class="card-footer bg-white py-2 px-3">
+                        <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="${i}">
                             <i class="bi bi-eye me-1"></i>ดูรายละเอียด
-                        </button>
-                        <button class="btn btn-sm btn-success btn-save" data-idx="${i}" title="บันทึกแผน">
-                            <i class="bi bi-plus-lg"></i>
                         </button>
                     </div>
                 </div>
@@ -416,9 +462,6 @@
         // Bind card buttons
         container.querySelectorAll('.btn-detail').forEach(btn => {
             btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.idx)));
-        });
-        container.querySelectorAll('.btn-save').forEach(btn => {
-            btn.addEventListener('click', () => saveFromCard(parseInt(btn.dataset.idx)));
         });
 
         // Apply roll width filter
@@ -508,25 +551,38 @@
             </div>`;
         }).join('');
 
-        // Items table
+        // Items table with Tag comparison
+        const hasAnyTag = items.some(it => it._tagWidth || it._tagLength);
         $('detailItems').innerHTML = `
             <table class="table table-sm table-hover mb-0" style="font-size:0.72rem;">
                 <thead><tr>
-                    <th style="width:30px;">#</th>
+                    <th style="width:28px;">#</th>
                     <th>Barcode</th>
                     <th>Order</th>
-                    <th class="text-end">ขนาด</th>
-                    <th class="text-end">ตร.ม.</th>
+                    <th class="text-end">พรม</th>
+                    ${hasAnyTag ? '<th class="text-end">Tag</th>' : ''}
+                    <th class="text-end">ตัด</th>
+                    ${hasAnyTag ? '<th class="text-end">%เผื่อ</th>' : ''}
                     <th class="text-center">R</th>
                 </tr></thead>
                 <tbody>${items.map((it, i) => {
-                    const area = (it.packWidth * it.packLength).toFixed(2);
+                    const cutArea = it.packWidth * it.packLength;
+                    const tagW = it._tagWidth;
+                    const tagL = it._tagLength;
+                    const tagArea = (tagW && tagL) ? tagW * tagL : null;
+                    const allowancePct = tagArea ? (((cutArea - tagArea) / tagArea) * 100).toFixed(1) : null;
+                    const allowanceColor = allowancePct !== null
+                        ? (parseFloat(allowancePct) <= 5 ? '#16a34a' : parseFloat(allowancePct) <= 15 ? '#ea580c' : '#dc2626')
+                        : '';
+
                     return `<tr>
                         <td>${i + 1}</td>
                         <td><code class="small" style="color:#0d47a1;">${it.barcodeNo || ''}</code></td>
                         <td class="small">${it.orno || ''}</td>
+                        <td class="text-end small">${formatNumber(it.originalWidth)}x${formatNumber(it.originalLength)}</td>
+                        ${hasAnyTag ? `<td class="text-end small">${tagW && tagL ? formatNumber(tagW) + 'x' + formatNumber(tagL) : '-'}</td>` : ''}
                         <td class="text-end small">${it.packWidth}x${it.packLength}</td>
-                        <td class="text-end small">${area}</td>
+                        ${hasAnyTag ? `<td class="text-end small fw-medium" style="color:${allowanceColor};">${allowancePct !== null ? allowancePct + '%' : '-'}</td>` : ''}
                         <td class="text-center">${it.isRotated ? '<span class="badge bg-warning text-dark" style="font-size:0.6rem;">R</span>' : '-'}</td>
                     </tr>`;
                 }).join('')}</tbody>
@@ -578,12 +634,6 @@
     }
 
     // ───── Save Plan ─────
-    async function saveFromCard(index) {
-        const r = compareResults[index];
-        if (!r) return;
-        await doSave(r);
-    }
-
     async function onSaveFromDetail() {
         if (currentDetailIndex === null) return;
         const r = compareResults[currentDetailIndex];
