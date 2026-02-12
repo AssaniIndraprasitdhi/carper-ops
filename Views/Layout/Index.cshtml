@@ -4,28 +4,28 @@
 }
 
 <!-- Edit Mode Banner -->
-<div id="editBanner" class="d-none px-3 py-2 d-flex align-items-center gap-2" style="background: #fff3cd; border-bottom: 1px solid #ffc107;">
-    <i class="bi bi-pencil-square text-warning"></i>
-    <span class="small fw-medium">กำลังแก้ไข: <strong id="editPlanCode"></strong></span>
-    <a id="btnCancelEdit" href="/Layout/Plans" class="btn btn-sm btn-outline-secondary ms-2">ยกเลิก</a>
+<div id="editBanner" class="d-none px-3 py-1 d-flex align-items-center gap-2" style="background: #fef3c7; border-bottom: 1px solid #fde68a;">
+    <i class="bi bi-pencil-square" style="color: #d97706;"></i>
+    <span class="small fw-medium" style="color: #92400e;">แก้ไข: <strong id="editPlanCode"></strong></span>
+    <a id="btnCancelEdit" href="/Layout/Plans" class="btn btn-sm btn-outline-secondary ms-2" style="font-size:0.7rem;padding:0.15rem 0.5rem;">ยกเลิก</a>
 </div>
 
 <!-- Top Toolbar -->
-<div class="toolbar-row d-flex align-items-center gap-2 px-3 py-2">
+<div class="toolbar-row d-flex align-items-center gap-2 px-3 py-1">
     <div class="d-flex align-items-center gap-2">
-        <label class="text-nowrap small fw-medium mb-0 text-muted">Texture</label>
+        <label class="text-nowrap small mb-0">Texture</label>
         <select id="cnvIdSelect" class="form-select form-select-sm" style="width: 220px;">
             <option value="">-- เลือก Texture --</option>
         </select>
     </div>
     <div class="d-flex align-items-center gap-2">
-        <select id="rollWidthFilter" class="form-select form-select-sm" style="width: 150px;">
+        <select id="rollWidthFilter" class="form-select form-select-sm" style="width: 130px;">
             <option value="">ทุกขนาด</option>
         </select>
     </div>
-    <div class="ms-auto d-flex gap-2">
+    <div class="ms-auto d-flex gap-1">
         <button id="btnLoadOrders" class="btn btn-sm btn-success" disabled>
-            <i class="bi bi-download me-1"></i>โหลดข้อมูล
+            <i class="bi bi-download me-1"></i>โหลด
         </button>
         <button id="btnCalculate" class="btn btn-sm btn-primary" disabled>
             <i class="bi bi-calculator me-1"></i>คำนวณ
@@ -43,22 +43,22 @@
 <div class="d-flex flex-grow-1 overflow-hidden">
     <!-- Left Sidebar -->
     <div class="sidebar-panel d-flex flex-column">
-        <div class="sidebar-header px-3 py-2 d-flex justify-content-between align-items-center">
+        <div class="sidebar-header d-flex justify-content-between align-items-center">
             <span class="fw-medium small">
                 <i class="bi bi-list-ul me-1"></i>รายการพรม
-                <span id="orderCount" class="badge bg-light text-dark ms-1" style="font-size:0.65rem;">0</span>
+                <span id="orderCount" class="badge bg-light text-dark ms-1" style="font-size:0.6rem;">0</span>
             </span>
-            <span id="selectedCount" class="badge bg-warning text-dark d-none" style="font-size:0.65rem;">0 เลือก</span>
+            <span id="selectedCount" class="badge bg-warning text-dark d-none" style="font-size:0.6rem;">0 เลือก</span>
         </div>
-        <div class="px-3 py-2 border-bottom">
-            <div class="form-check mb-2">
+        <div class="px-2 py-1 border-bottom">
+            <div class="form-check mb-1">
                 <input class="form-check-input" type="checkbox" id="checkSelectAll">
                 <label class="form-check-label small" for="checkSelectAll">เลือกทั้งหมด</label>
             </div>
             <input type="text" id="orderSearch" class="form-control form-control-sm" placeholder="ค้นหา Barcode, Order...">
         </div>
-        <!-- OrderType Tabs (Group By) -->
-        <div class="px-2 pt-2 border-bottom">
+        <!-- OrderType Tabs -->
+        <div class="px-2 pt-1 pb-1 border-bottom">
             <ul class="nav nav-pills nav-fill" id="orderTypeTabs">
                 <li class="nav-item">
                     <a class="nav-link active small py-1 px-2" data-filter="" href="#">ทั้งหมด</a>
@@ -69,12 +69,15 @@
                 <li class="nav-item">
                     <a class="nav-link small py-1 px-2" data-filter="Sample" href="#">Sample</a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link small py-1 px-2" data-filter="AsPlan" href="#">AsPlan</a>
+                </li>
             </ul>
         </div>
         <!-- Order Items -->
         <div id="ordersList" class="flex-grow-1 overflow-auto">
-            <div class="text-center text-muted py-5 small">
-                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+            <div class="text-center text-muted py-4 small">
+                <i class="bi bi-inbox" style="font-size: 1.5rem; opacity: 0.3;"></i>
                 <p class="mt-2 mb-0">เลือก Texture แล้วกดโหลดข้อมูล</p>
             </div>
         </div>
@@ -83,37 +86,37 @@
     <!-- Main Content -->
     <div class="flex-grow-1 d-flex flex-column overflow-hidden">
         <!-- Color Legend -->
-        <div id="colorLegend" class="d-none px-3 py-2 border-bottom bg-white d-flex align-items-center gap-3">
-            <small class="text-muted fw-medium">Roll Width:</small>
+        <div id="colorLegend" class="d-none px-3 py-1 border-bottom bg-white d-flex align-items-center gap-3">
+            <small class="text-muted fw-medium" style="font-size:0.7rem;">Roll Width:</small>
             <div id="legendItems" class="d-flex gap-3"></div>
-            <div class="ms-auto small text-muted" id="resultSummary"></div>
+            <div class="ms-auto small text-muted" id="resultSummary" style="font-size:0.7rem;"></div>
         </div>
         <!-- Algorithm Cards Grid -->
-        <div id="resultsContainer" class="flex-grow-1 overflow-auto p-3">
-            <div id="algorithmCards" class="row g-3">
+        <div id="resultsContainer" class="flex-grow-1 overflow-auto p-2">
+            <div id="algorithmCards" class="row g-2">
                 <div class="col-12 text-center text-muted py-5">
-                    <i class="bi bi-calculator" style="font-size: 3rem; opacity: 0.3;"></i>
-                    <p class="mt-2 mb-0">เลือก Orders แล้วกดคำนวณเพื่อเปรียบเทียบ Algorithm</p>
+                    <i class="bi bi-calculator" style="font-size: 2.5rem; opacity: 0.2;"></i>
+                    <p class="mt-2 mb-0 small">เลือก Orders แล้วกดคำนวณเพื่อเปรียบเทียบ Algorithm</p>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Detail Modal (Full-Screen Digital Dyed Plan Style) -->
+<!-- Detail Modal (Full-Screen) -->
 <div class="modal fade" id="detailModal" tabindex="-1">
     <div class="modal-dialog modal-fullscreen">
         <div class="modal-content detail-modal-content">
-            <!-- Dark Header Bar -->
+            <!-- Header -->
             <div class="detail-header">
-                <div class="d-flex align-items-center gap-3">
-                    <i class="bi bi-grid-3x3-gap-fill" style="font-size: 1.2rem;"></i>
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-grid-3x3-gap-fill" style="font-size: 1rem; opacity:0.7;"></i>
                     <div>
                         <div class="detail-header-title" id="detailModalTitle">Layout Detail</div>
                         <div class="detail-header-subtitle" id="detailModalSubtitle"></div>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
                     <div class="detail-header-stat">
                         <span class="stat-label">กว้าง</span>
                         <span class="stat-value" id="detailRollWidth">-</span>
@@ -126,65 +129,60 @@
                         <span class="stat-label">ประสิทธิภาพ</span>
                         <span class="stat-value" id="detailEffBadge">-</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">
+                    <button type="button" class="btn btn-sm btn-outline-light ms-1" data-bs-dismiss="modal" style="padding:0.2rem 0.5rem;">
                         <i class="bi bi-x-lg"></i>
                     </button>
                 </div>
             </div>
             <!-- Body: Canvas + Sidebar -->
             <div class="detail-body">
-                <!-- Canvas Area -->
                 <div class="detail-canvas-area">
                     <div id="detailCanvasContainer" class="detail-canvas-scroll">
                         <canvas id="detailCanvas"></canvas>
                     </div>
                 </div>
-                <!-- Right Sidebar -->
                 <div class="detail-sidebar">
-                    <!-- Metrics Cards -->
                     <div class="detail-sidebar-section">
                         <div class="detail-sidebar-title"><i class="bi bi-speedometer2 me-1"></i>สรุปผล</div>
-                        <div id="detailMetrics" class="row g-2"></div>
+                        <div id="detailMetrics" class="row g-1"></div>
                     </div>
-                    <!-- ORNO Color Legend -->
                     <div class="detail-sidebar-section">
                         <div class="detail-sidebar-title"><i class="bi bi-palette me-1"></i>สี Order</div>
                         <div id="detailOrnoLegend" class="detail-legend-list"></div>
                     </div>
-                    <!-- Items Table -->
                     <div class="detail-sidebar-section flex-grow-1" style="min-height:0;">
                         <div class="detail-sidebar-title"><i class="bi bi-list-ol me-1"></i>รายการชิ้นงาน</div>
                         <div id="detailItems" class="detail-items-scroll"></div>
                     </div>
                 </div>
             </div>
-            <!-- Bottom Action Bar -->
+            <!-- Footer -->
             <div class="detail-footer">
-                <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
                     <div class="btn-group btn-group-sm" role="group" id="viewModeGroup">
-                        <button type="button" class="btn btn-outline-light" data-mode="actual">
+                        <button type="button" class="btn btn-outline-light" data-mode="actual" style="font-size:0.72rem;">
                             <i class="bi bi-rulers me-1"></i>Actual
                         </button>
-                        <button type="button" class="btn btn-light active" data-mode="optimize">
+                        <button type="button" class="btn btn-light active" data-mode="optimize" style="font-size:0.72rem;">
                             <i class="bi bi-lightning me-1"></i>Optimize
                         </button>
                     </div>
                     <div class="form-check form-switch mb-0">
                         <input class="form-check-input" type="checkbox" id="chkShowDetail" checked>
-                        <label class="form-check-label small text-white" for="chkShowDetail">แสดงรายละเอียด</label>
+                        <label class="form-check-label small text-white" for="chkShowDetail" style="font-size:0.72rem;">แสดงรายละเอียด</label>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <button id="btnDownloadPng" class="btn btn-sm btn-outline-light">
+                <div class="d-flex align-items-center gap-1">
+                    <button id="btnDownloadPng" class="btn btn-sm btn-outline-light" style="font-size:0.72rem;">
                         <i class="bi bi-image me-1"></i>PNG
                     </button>
-                    <button class="btn btn-sm btn-outline-light" onclick="window.print()">
+                    <button class="btn btn-sm btn-outline-light" onclick="window.print()" style="font-size:0.72rem;">
                         <i class="bi bi-printer me-1"></i>พิมพ์
                     </button>
-                    <button id="btnSaveFromDetail" class="btn btn-sm btn-success">
+                    <button id="btnSaveFromDetail" class="btn btn-sm btn-success" style="font-size:0.72rem;">
                         <i class="bi bi-save me-1"></i>บันทึกแผนนี้
                     </button>
-                    <button class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">
+                    <button class="btn btn-sm btn-outline-light" data-bs-dismiss="modal" style="font-size:0.72rem;">
                         <i class="bi bi-x-circle me-1"></i>ปิด
                     </button>
                 </div>
@@ -196,11 +194,11 @@
 <!-- Success Modal -->
 <div class="modal fade" id="successModal" tabindex="-1">
     <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content text-center">
+        <div class="modal-content text-center border-0" style="border-radius: 14px;">
             <div class="modal-body py-4">
-                <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
-                <h5 class="mt-3">บันทึกสำเร็จ</h5>
-                <p class="text-muted small">Plan Code: <strong id="savedPlanCode"></strong></p>
+                <i class="bi bi-check-circle" style="font-size: 2.5rem; color: var(--green);"></i>
+                <h6 class="mt-2 fw-bold">บันทึกสำเร็จ</h6>
+                <p class="text-muted small mb-3">Plan Code: <strong id="savedPlanCode"></strong></p>
                 <div class="d-flex justify-content-center gap-2">
                     <a id="btnViewReport" href="#" target="_blank" class="btn btn-sm btn-success">
                         <i class="bi bi-printer me-1"></i>Report

@@ -1,4 +1,4 @@
-// ===== CAPET-OPS Global Helpers =====
+// ===== ระบบวางแผนผ้าใบ - Global Helpers =====
 
 function showLoading(message) {
     const overlay = document.getElementById('loading-overlay');

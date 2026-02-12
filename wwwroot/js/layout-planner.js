@@ -20,6 +20,11 @@
     // DOM refs
     const $ = id => document.getElementById(id);
 
+    // Helper: get AsPlan value regardless of JSON property casing
+    function getAsPlan(o) {
+        return o.asplan || o.ASPLAN || o.asPlan || o.AsPlan || '';
+    }
+
     // Init
     document.addEventListener('DOMContentLoaded', async () => {
         await loadCnvIds();
@@ -113,6 +118,13 @@
             let url = `/api/orders?cnvId=${encodeURIComponent(selectedCnvId)}`;
             if (editingPlanId) url += `&excludePlanId=${editingPlanId}`;
             currentOrders = await fetchApi(url, { loadingMessage: 'กำลังโหลดรายการ..' });
+            // Debug: log AsPlan info to console
+            if (currentOrders.length > 0) {
+                const keys = Object.keys(currentOrders[0]);
+                const asPlanKey = keys.find(k => k.toLowerCase() === 'asplan');
+                console.log('[DEBUG] JSON keys:', keys.join(', '));
+                console.log('[DEBUG] AsPlan key:', asPlanKey, '| sample:', currentOrders[0][asPlanKey]);
+            }
             currentOrders.forEach(o => o._selected = false);
             expandedGroups = {};
             renderOrdersList();
@@ -129,7 +141,11 @@
     // ───── Sidebar Order List (Grouped by ORNO) ─────
     function getFilteredOrders() {
         return currentOrders.filter(o => {
-            if (activeOrderTypeFilter && o.orderType !== activeOrderTypeFilter) return false;
+            if (activeOrderTypeFilter === 'AsPlan') {
+                if (getAsPlan(o) !== 'Y') return false;
+            } else if (activeOrderTypeFilter) {
+                if (o.orderType !== activeOrderTypeFilter) return false;
+            }
             if (searchQuery) {
                 const q = searchQuery;
                 const match = (o.barcodeNo || '').toLowerCase().includes(q) ||
@@ -161,10 +177,12 @@
         const allCount = currentOrders.length;
         const orderCount = currentOrders.filter(o => o.orderType === 'Order').length;
         const sampleCount = currentOrders.filter(o => o.orderType === 'Sample').length;
+        const asPlanCount = currentOrders.filter(o => getAsPlan(o) === 'Y').length;
         const tabs = document.querySelectorAll('#orderTypeTabs .nav-link');
         tabs[0].innerHTML = `ทั้งหมด <span class="badge bg-white text-dark ms-1" style="font-size:0.6rem;">${allCount}</span>`;
         tabs[1].innerHTML = `Order <span class="badge bg-white text-dark ms-1" style="font-size:0.6rem;">${orderCount}</span>`;
         tabs[2].innerHTML = `Sample <span class="badge bg-white text-dark ms-1" style="font-size:0.6rem;">${sampleCount}</span>`;
+        tabs[3].innerHTML = `AsPlan <span class="badge bg-white text-dark ms-1" style="font-size:0.6rem;">${asPlanCount}</span>`;
 
         if (filtered.length === 0) {
             list.innerHTML = `<div class="text-center text-muted py-4 small">
@@ -186,6 +204,10 @@
             const typeBadge = g.orderType === 'Order'
                 ? '<span class="badge order-badge-order">Order</span>'
                 : '<span class="badge order-badge-sample">Sample</span>';
+            const asPlanCount = g.items.filter(o => getAsPlan(o) === 'Y').length;
+            const groupAsPlanBadge = asPlanCount > 0
+                ? `<span class="badge asplan-badge">${asPlanCount} AsPlan</span>`
+                : '';
 
             const itemsHtml = g.items.map(o => {
                 const origIdx = currentOrders.indexOf(o);
@@ -193,15 +215,21 @@
                 const selClass = o._selected ? 'selected' : '';
                 const tw = o._tagWidth ?? '';
                 const tl = o._tagLength ?? '';
+                const isAsPlan = getAsPlan(o) === 'Y';
+                const asPlanBadge = isAsPlan ? '<span class="badge asplan-badge">AsPlan</span>' : '';
+                const tagRequired = isAsPlan ? 'tag-required' : '';
+                const missingTag = isAsPlan && o._selected && (!o._tagWidth || !o._tagLength);
+                const missingClass = missingTag ? 'tag-missing' : '';
                 return `<div class="order-subitem ${selClass}" data-idx="${origIdx}">
                     <input type="checkbox" class="form-check-input order-cb" data-idx="${origIdx}" ${checked}>
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="d-flex align-items-center gap-1">
                             <span class="barcode">${o.barcodeNo || ''}</span>
+                            ${asPlanBadge}
                             <span class="order-size">${formatNumber(o.width)}x${formatNumber(o.length)}m</span>
                         </div>
-                        <div class="tag-input-row" onclick="event.stopPropagation();">
-                            <span class="tag-label">Tag</span>
+                        <div class="tag-input-row ${tagRequired} ${missingClass}" onclick="event.stopPropagation();">
+                            <span class="tag-label">${isAsPlan ? '<i class="bi bi-pencil-fill" style="font-size:0.5rem;"></i>' : 'Tag'}</span>
                             <input type="number" class="tag-input tag-w" data-idx="${origIdx}" value="${tw}" placeholder="W" step="0.01">
                             <span class="tag-x">x</span>
                             <input type="number" class="tag-input tag-l" data-idx="${origIdx}" value="${tl}" placeholder="L" step="0.01">
@@ -219,6 +247,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="order-group-name">${g.orno}</span>
                             ${typeBadge}
+                            ${groupAsPlanBadge}
                         </div>
                         <div class="order-group-meta">
                             <span>${g.items.length} ชิ้น</span>
@@ -330,6 +359,19 @@
         const selectedBarcodes = currentOrders.filter(o => o._selected).map(o => o.barcodeNo);
         if (selectedBarcodes.length === 0) return;
 
+        // Validate AsPlan items must have Tag W & H
+        const asPlanMissing = currentOrders.filter(o =>
+            o._selected &&
+            getAsPlan(o) === 'Y' &&
+            (!o._tagWidth || !o._tagLength)
+        );
+        if (asPlanMissing.length > 0) {
+            const barcodes = asPlanMissing.map(o => o.barcodeNo).join(', ');
+            showAlert(`กรุณากรอก Tag Width และ Height สำหรับรายการ AsPlan: ${barcodes}`, 'warning');
+            renderOrdersList();
+            return;
+        }
+
         try {
             const response = await fetchApi('/api/calculation/compare', {
                 method: 'POST',
@@ -346,13 +388,14 @@
         }
     }
 
-    // ───── Enrich packed items with tag dimensions from sidebar ─────
+    // ───── Enrich packed items with tag dimensions and asPlan from sidebar ─────
     function enrichPackedItemsWithTags() {
-        // Build lookup: barcodeNo → { tagWidth, tagLength }
+        // Build lookup: barcodeNo → { tagWidth, tagLength, asPlan }
         const tagMap = {};
         currentOrders.forEach(o => {
-            if (o._tagWidth || o._tagLength) {
-                tagMap[o.barcodeNo] = { tagWidth: o._tagWidth || null, tagLength: o._tagLength || null };
+            const isAsPlan = getAsPlan(o) === 'Y';
+            if (o._tagWidth || o._tagLength || isAsPlan) {
+                tagMap[o.barcodeNo] = { tagWidth: o._tagWidth || null, tagLength: o._tagLength || null, asPlan: isAsPlan };
             }
         });
 
@@ -362,6 +405,7 @@
                 if (tag) {
                     item._tagWidth = tag.tagWidth;
                     item._tagLength = tag.tagLength;
+                    item._asPlan = tag.asPlan;
                 }
             });
         });
@@ -395,32 +439,32 @@
         container.innerHTML = compareResults.map((r, i) => {
             const eff = r.result.efficiencyPct;
             const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
-            const bestBadge = r.isBest ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">ดีที่สุด</span>' : '';
+            const bestBadge = r.isBest ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem;">Best</span>' : '';
             const bestClass = r.isBest ? 'best-card' : '';
             const borderColor = rollWidthColors[r.rollWidth] || '#ddd';
             const canvasId = `mini_${i}`;
             const skipped = r.skippedCount || 0;
             const skippedWarn = skipped > 0
-                ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (ใหญ่เกิน ${r.rollWidth}m)</div>`
+                ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (เกิน ${r.rollWidth}m)</div>`
                 : '';
 
-            return `<div class="col-xxl-3 col-xl-4 col-lg-6 card-col" data-rollwidth="${r.rollWidth}">
+            return `<div class="col-xxl-3 col-xl-3 col-lg-4 col-md-6 card-col" data-rollwidth="${r.rollWidth}">
                 <div class="algorithm-card ${bestClass}" style="border-top: 3px solid ${borderColor};">
-                    <div class="card-header bg-white py-2 px-3">
+                    <div class="card-header">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="fw-medium small">${r.algorithmNameTh}</span>
-                            <span class="badge bg-light text-dark border" style="font-size:0.7rem;">${r.rollWidth}m</span>
+                            <span class="fw-medium" style="font-size:0.75rem;">${r.algorithmNameTh}</span>
+                            <span class="badge bg-light text-dark border" style="font-size:0.65rem;">${r.rollWidth}m</span>
                         </div>
-                        <div class="small text-muted">${r.algorithmName} ${bestBadge}</div>
+                        <div class="text-muted" style="font-size:0.68rem;">${r.algorithmName} ${bestBadge}</div>
                     </div>
-                    <div class="card-body p-3">
+                    <div class="card-body p-2">
                         ${skippedWarn}
-                        <div class="text-center mb-2">
-                            <div class="fs-2 fw-bold ${effClass}">${eff}%</div>
-                            <div class="small text-muted" style="margin-top:-4px;">ประสิทธิภาพ</div>
+                        <div class="text-center mb-1">
+                            <div class="fw-bold ${effClass}" style="font-size:1.5rem;">${eff}%</div>
+                            <div class="text-muted" style="font-size:0.65rem;margin-top:-2px;">ประสิทธิภาพ</div>
                         </div>
                         <div class="mini-canvas-wrap mb-2"><canvas id="${canvasId}"></canvas></div>
-                        <div class="row g-1 text-center" style="font-size:0.72rem;">
+                        <div class="row g-0 text-center" style="font-size:0.68rem;">
                             <div class="col-4">
                                 <div class="text-muted">ตร.ม.</div>
                                 <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
@@ -434,14 +478,14 @@
                                 <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
                             </div>
                         </div>
-                        <div class="mt-2">
+                        <div class="mt-1">
                             <div class="progress">
                                 <div class="progress-bar" style="width:${Math.min(100, eff)}%; background:${borderColor};"></div>
                             </div>
                         </div>
                     </div>
-                    <div class="card-footer bg-white py-2 px-3">
-                        <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="${i}">
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="${i}" style="font-size:0.72rem;">
                             <i class="bi bi-eye me-1"></i>ดูรายละเอียด
                         </button>
                     </div>
@@ -553,12 +597,14 @@
 
         // Items table with Tag comparison
         const hasAnyTag = items.some(it => it._tagWidth || it._tagLength);
+        const hasAnyAsPlan = items.some(it => it._asPlan);
         $('detailItems').innerHTML = `
             <table class="table table-sm table-hover mb-0" style="font-size:0.72rem;">
                 <thead><tr>
                     <th style="width:28px;">#</th>
                     <th>Barcode</th>
                     <th>Order</th>
+                    ${hasAnyAsPlan ? '<th class="text-center">AP</th>' : ''}
                     <th class="text-end">พรม</th>
                     ${hasAnyTag ? '<th class="text-end">Tag</th>' : ''}
                     <th class="text-end">ตัด</th>
@@ -579,6 +625,7 @@
                         <td>${i + 1}</td>
                         <td><code class="small" style="color:#0d47a1;">${it.barcodeNo || ''}</code></td>
                         <td class="small">${it.orno || ''}</td>
+                        ${hasAnyAsPlan ? `<td class="text-center">${it._asPlan ? '<span class="badge asplan-badge">AP</span>' : '-'}</td>` : ''}
                         <td class="text-end small">${formatNumber(it.originalWidth)}x${formatNumber(it.originalLength)}</td>
                         ${hasAnyTag ? `<td class="text-end small">${tagW && tagL ? formatNumber(tagW) + 'x' + formatNumber(tagL) : '-'}</td>` : ''}
                         <td class="text-end small">${it.packWidth}x${it.packLength}</td>
