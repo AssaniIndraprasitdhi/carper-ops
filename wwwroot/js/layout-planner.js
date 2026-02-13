@@ -595,41 +595,64 @@
             </div>`;
         }).join('');
 
-        // Items table with Tag comparison
+        // Items table with comprehensive report columns
         const hasAnyTag = items.some(it => it._tagWidth || it._tagLength);
-        const hasAnyAsPlan = items.some(it => it._asPlan);
         $('detailItems').innerHTML = `
-            <table class="table table-sm table-hover mb-0" style="font-size:0.72rem;">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.68rem;">
                 <thead><tr>
-                    <th style="width:28px;">#</th>
+                    <th style="width:24px;">#</th>
                     <th>Barcode</th>
                     <th>Order</th>
-                    ${hasAnyAsPlan ? '<th class="text-center">AP</th>' : ''}
-                    <th class="text-end">พรม</th>
-                    ${hasAnyTag ? '<th class="text-end">Tag</th>' : ''}
-                    <th class="text-end">ตัด</th>
-                    ${hasAnyTag ? '<th class="text-end">%เผื่อ</th>' : ''}
+                    <th class="text-end">พรม W</th>
+                    <th class="text-end">พรม L</th>
+                    <th class="text-end">พท.พรม</th>
+                    ${hasAnyTag ? `
+                    <th class="text-end">Tag W</th>
+                    <th class="text-end">Tag L</th>
+                    <th class="text-end">พท.Tag</th>
+                    <th class="text-end">%เผื่อ Tag</th>` : ''}
+                    <th class="text-end">ตัด W</th>
+                    <th class="text-end">ตัด L</th>
+                    <th class="text-end">พท.ตัด</th>
+                    ${hasAnyTag ? '<th class="text-end">%เผื่อ ตัด</th>' : ''}
+                    <th class="text-end">%สูญเสีย</th>
                     <th class="text-center">R</th>
                 </tr></thead>
                 <tbody>${items.map((it, i) => {
-                    const cutArea = it.packWidth * it.packLength;
+                    const carpetW = it.originalWidth;
+                    const carpetL = it.originalLength;
+                    const carpetArea = carpetW * carpetL;
                     const tagW = it._tagWidth;
                     const tagL = it._tagLength;
                     const tagArea = (tagW && tagL) ? tagW * tagL : null;
-                    const allowancePct = tagArea ? (((cutArea - tagArea) / tagArea) * 100).toFixed(1) : null;
-                    const allowanceColor = allowancePct !== null
-                        ? (parseFloat(allowancePct) <= 5 ? '#16a34a' : parseFloat(allowancePct) <= 15 ? '#ea580c' : '#dc2626')
-                        : '';
+                    const tagAllowancePct = tagArea ? (((tagArea - carpetArea) / carpetArea) * 100).toFixed(1) : null;
+                    const cutW = it.packWidth;
+                    const cutL = it.packLength;
+                    const cutArea = cutW * cutL;
+                    const cutVsTagPct = tagArea ? (((cutArea - tagArea) / tagArea) * 100).toFixed(1) : null;
+                    const wastePct = carpetArea > 0 ? (((cutArea - carpetArea) / carpetArea) * 100).toFixed(1) : null;
+
+                    const colorTag = tagAllowancePct !== null ? (parseFloat(tagAllowancePct) <= 5 ? '#16a34a' : parseFloat(tagAllowancePct) <= 15 ? '#ea580c' : '#dc2626') : '';
+                    const colorCut = cutVsTagPct !== null ? (parseFloat(cutVsTagPct) <= 5 ? '#16a34a' : parseFloat(cutVsTagPct) <= 15 ? '#ea580c' : '#dc2626') : '';
+                    const colorWaste = wastePct !== null ? (parseFloat(wastePct) <= 10 ? '#16a34a' : parseFloat(wastePct) <= 20 ? '#ea580c' : '#dc2626') : '';
 
                     return `<tr>
                         <td>${i + 1}</td>
                         <td><code class="small" style="color:#0d47a1;">${it.barcodeNo || ''}</code></td>
                         <td class="small">${it.orno || ''}</td>
-                        ${hasAnyAsPlan ? `<td class="text-center">${it._asPlan ? '<span class="badge asplan-badge">AP</span>' : '-'}</td>` : ''}
-                        <td class="text-end small">${formatNumber(it.originalWidth)}x${formatNumber(it.originalLength)}</td>
-                        ${hasAnyTag ? `<td class="text-end small">${tagW && tagL ? formatNumber(tagW) + 'x' + formatNumber(tagL) : '-'}</td>` : ''}
-                        <td class="text-end small">${it.packWidth}x${it.packLength}</td>
-                        ${hasAnyTag ? `<td class="text-end small fw-medium" style="color:${allowanceColor};">${allowancePct !== null ? allowancePct + '%' : '-'}</td>` : ''}
+                        <td class="text-end">${formatNumber(carpetW)}</td>
+                        <td class="text-end">${formatNumber(carpetL)}</td>
+                        <td class="text-end">${formatNumber(carpetArea)}</td>
+                        ${hasAnyTag ? `
+                        <td class="text-end">${tagW ? formatNumber(tagW) : '-'}</td>
+                        <td class="text-end">${tagL ? formatNumber(tagL) : '-'}</td>
+                        <td class="text-end">${tagArea ? formatNumber(tagArea) : '-'}</td>
+                        <td class="text-end fw-medium" style="color:${colorTag};">${tagAllowancePct !== null ? tagAllowancePct + '%' : '-'}</td>` : ''}
+                        <td class="text-end">${formatNumber(cutW)}</td>
+                        <td class="text-end">${formatNumber(cutL)}</td>
+                        <td class="text-end">${formatNumber(cutArea)}</td>
+                        ${hasAnyTag ? `<td class="text-end fw-medium" style="color:${colorCut};">${cutVsTagPct !== null ? cutVsTagPct + '%' : '-'}</td>` : ''}
+                        <td class="text-end fw-medium" style="color:${colorWaste};">${wastePct !== null ? wastePct + '%' : '-'}</td>
                         <td class="text-center">${it.isRotated ? '<span class="badge bg-warning text-dark" style="font-size:0.6rem;">R</span>' : '-'}</td>
                     </tr>`;
                 }).join('')}</tbody>
@@ -695,6 +718,13 @@
             const url = isEdit ? `/api/plans/${editingPlanId}` : '/api/plans';
             const method = isEdit ? 'PUT' : 'POST';
 
+            // Enrich packed items with tag dimensions for saving
+            const itemsToSave = (r.result.packedItems || []).map(item => ({
+                ...item,
+                tagWidth: item._tagWidth || item.tagWidth || null,
+                tagLength: item._tagLength || item.tagLength || null
+            }));
+
             const plan = await fetchApi(url, {
                 method,
                 body: JSON.stringify({
@@ -706,7 +736,7 @@
                     wasteArea: r.result.wasteArea,
                     efficiencyPct: r.result.efficiencyPct,
                     pieceCount: r.result.pieceCount,
-                    packedItems: r.result.packedItems
+                    packedItems: itemsToSave
                 }),
                 loadingMessage: isEdit ? 'กำลังอัปเดต..' : 'กำลังบันทึก..'
             });

@@ -56,6 +56,7 @@ public class CalculationApiController : ControllerBase
 
         var algorithms = new[]
         {
+            (PackingAlgorithm.MaxRects, "MaxRects (BSSF)", "MaxRects"),
             (PackingAlgorithm.Standard, "Standard (FFD)", "มาตรฐาน"),
             (PackingAlgorithm.Rotated, "Rotated", "หมุนอัตโนมัติ"),
             (PackingAlgorithm.SizeBased, "Size-Based", "จัดตามขนาด"),

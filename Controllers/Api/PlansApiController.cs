@@ -76,7 +76,9 @@ public class PlansApiController : ControllerBase
                 i.PackY,
                 i.PackWidth,
                 i.PackLength,
-                i.IsRotated
+                i.IsRotated,
+                i.TagWidth,
+                i.TagLength
             })
         });
     }

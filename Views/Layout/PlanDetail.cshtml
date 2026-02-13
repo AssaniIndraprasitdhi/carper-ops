@@ -91,41 +91,83 @@
         <span class="fw-medium small"><i class="bi bi-table me-1"></i>รายการในแผน</span>
         <span class="badge bg-light text-dark" style="font-size:0.65rem;">@Model.Items.Count รายการ</span>
     </div>
+    @{
+        int idx = 1;
+        bool hasTag = Model.Items.Any(i => i.TagWidth.HasValue || i.TagLength.HasValue);
+    }
     <div class="card-body p-0">
         <div class="table-responsive" style="max-height: 35vh; overflow-y: auto;">
-            <table class="table table-hover table-sm mb-0">
+            <table class="table table-hover table-sm mb-0" style="font-size:0.75rem;">
                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                     <tr>
                         <th>#</th>
                         <th>Barcode</th>
                         <th>Order</th>
-                        <th>Item No</th>
-                        <th>W (m)</th>
-                        <th>L (m)</th>
-                        <th>Area</th>
-                        <th>Qty</th>
+                        <th class="text-end">พรม W</th>
+                        <th class="text-end">พรม L</th>
+                        <th class="text-end">พท.พรม</th>
+                        @if (hasTag)
+                        {
+                            <th class="text-end">Tag W</th>
+                            <th class="text-end">Tag L</th>
+                            <th class="text-end">พท.Tag</th>
+                            <th class="text-end">%เผื่อ Tag</th>
+                        }
+                        <th class="text-end">ตัด W</th>
+                        <th class="text-end">ตัด L</th>
+                        <th class="text-end">พท.ตัด</th>
+                        @if (hasTag)
+                        {
+                            <th class="text-end">%เผื่อ ตัด</th>
+                        }
+                        <th class="text-end">%สูญเสีย</th>
                         <th>Type</th>
-                        <th>Position</th>
-                        <th>Rotated</th>
+                        <th>R</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @{ int idx = 1; }
                     @foreach (var item in Model.Items)
                     {
+                        var carpetArea = item.Width * item.Length;
+                        var cutArea = item.PackWidth * item.PackLength;
+                        var tagArea = (item.TagWidth.HasValue && item.TagLength.HasValue)
+                            ? item.TagWidth.Value * item.TagLength.Value : (decimal?)null;
+                        var tagAllowPct = (tagArea.HasValue && carpetArea > 0)
+                            ? ((tagArea.Value - carpetArea) / carpetArea * 100) : (decimal?)null;
+                        var cutVsTagPct = (tagArea.HasValue && tagArea.Value > 0)
+                            ? ((cutArea - tagArea.Value) / tagArea.Value * 100) : (decimal?)null;
+                        var wastePct = carpetArea > 0 ? ((cutArea - carpetArea) / carpetArea * 100) : (decimal?)null;
                         <tr>
                             <td>@idx</td>
                             <td><code class="small">@item.BarcodeNo</code></td>
                             <td class="small">@item.Orno</td>
-                            <td class="small">@item.ItemNo</td>
-                            <td class="small">@item.Width</td>
-                            <td class="small">@item.Length</td>
-                            <td class="small">@item.Area</td>
-                            <td class="small">@item.Qty</td>
+                            <td class="text-end small">@item.Width.ToString("N2")</td>
+                            <td class="text-end small">@item.Length.ToString("N2")</td>
+                            <td class="text-end small">@carpetArea.ToString("N2")</td>
+                            @if (hasTag)
+                            {
+                                <td class="text-end small">@(item.TagWidth.HasValue ? item.TagWidth.Value.ToString("N2") : "-")</td>
+                                <td class="text-end small">@(item.TagLength.HasValue ? item.TagLength.Value.ToString("N2") : "-")</td>
+                                <td class="text-end small">@(tagArea.HasValue ? tagArea.Value.ToString("N2") : "-")</td>
+                                <td class="text-end small fw-medium" style="color:@(tagAllowPct.HasValue ? (tagAllowPct.Value <= 5 ? "var(--green)" : tagAllowPct.Value <= 15 ? "var(--orange)" : "var(--red)") : "inherit");">
+                                    @(tagAllowPct.HasValue ? tagAllowPct.Value.ToString("N1") + "%" : "-")
+                                </td>
+                            }
+                            <td class="text-end small">@item.PackWidth.ToString("N2")</td>
+                            <td class="text-end small">@item.PackLength.ToString("N2")</td>
+                            <td class="text-end small">@cutArea.ToString("N2")</td>
+                            @if (hasTag)
+                            {
+                                <td class="text-end small fw-medium" style="color:@(cutVsTagPct.HasValue ? (cutVsTagPct.Value <= 5 ? "var(--green)" : cutVsTagPct.Value <= 15 ? "var(--orange)" : "var(--red)") : "inherit");">
+                                    @(cutVsTagPct.HasValue ? cutVsTagPct.Value.ToString("N1") + "%" : "-")
+                                </td>
+                            }
+                            <td class="text-end small fw-medium" style="color:@(wastePct.HasValue ? (wastePct.Value <= 10 ? "var(--green)" : wastePct.Value <= 20 ? "var(--orange)" : "var(--red)") : "inherit");">
+                                @(wastePct.HasValue ? wastePct.Value.ToString("N1") + "%" : "-")
+                            </td>
                             <td>
                                 <span class="badge @(item.OrderType == "Order" ? "bg-primary" : "bg-info")" style="font-size:0.65rem;">@item.OrderType</span>
                             </td>
-                            <td class="small">(@item.PackX, @item.PackY)</td>
                             <td class="small">@(item.IsRotated ? "Yes" : "-")</td>
                         </tr>
                         idx++;

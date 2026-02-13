@@ -31,4 +31,6 @@ public class PackedItemDto
     public decimal PackWidth { get; set; }
     public decimal PackLength { get; set; }
     public bool IsRotated { get; set; }
+    public decimal? TagWidth { get; set; }
+    public decimal? TagLength { get; set; }
 }

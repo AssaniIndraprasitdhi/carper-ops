@@ -7,7 +7,8 @@ public enum PackingAlgorithm
     Standard,
     Rotated,
     SizeBased,
-    CutCorner
+    CutCorner,
+    MaxRects
 }
 
 public interface ILayoutCalculationService

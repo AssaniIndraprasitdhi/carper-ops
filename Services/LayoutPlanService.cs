@@ -81,6 +81,8 @@ public class LayoutPlanService : ILayoutPlanService
                     PackWidth = item.PackWidth,
                     PackLength = item.PackLength,
                     IsRotated = item.IsRotated,
+                    TagWidth = item.TagWidth,
+                    TagLength = item.TagLength,
                 });
 
                 _db.PlannedBarcodes.Add(new PlannedBarcode
@@ -155,6 +157,8 @@ public class LayoutPlanService : ILayoutPlanService
                     PackWidth = item.PackWidth,
                     PackLength = item.PackLength,
                     IsRotated = item.IsRotated,
+                    TagWidth = item.TagWidth,
+                    TagLength = item.TagLength,
                 });
 
                 _db.PlannedBarcodes.Add(new PlannedBarcode

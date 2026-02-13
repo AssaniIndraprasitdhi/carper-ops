@@ -104,6 +104,8 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PackWidth).HasColumnName("pack_width").HasColumnType("decimal(10,4)");
             entity.Property(e => e.PackLength).HasColumnName("pack_length").HasColumnType("decimal(10,4)");
             entity.Property(e => e.IsRotated).HasColumnName("is_rotated").HasDefaultValue(false);
+            entity.Property(e => e.TagWidth).HasColumnName("tag_width").HasColumnType("decimal(10,4)");
+            entity.Property(e => e.TagLength).HasColumnName("tag_length").HasColumnType("decimal(10,4)");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             entity.HasIndex(e => e.LayoutPlanId);
             entity.HasIndex(e => e.BarcodeNo);
