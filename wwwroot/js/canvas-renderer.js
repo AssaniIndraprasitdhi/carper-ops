@@ -266,7 +266,7 @@ class CanvasRenderer {
 
             ctx.restore();
 
-            // Column header label (meter range)
+            // Column header label (meter range + roll width)
             if (!this.mini) {
                 ctx.fillStyle = '#040d1a';
                 ctx.fillRect(colX, 0, colWidthPx, this.rulerSize);
@@ -276,17 +276,31 @@ class CanvasRenderer {
                 ctx.textBaseline = 'middle';
                 ctx.fillText(
                     `${segStartM.toFixed(1)}m — ${segEndM.toFixed(1)}m`,
-                    colX + colWidthPx / 2, this.rulerSize / 2
+                    colX + colWidthPx / 2, this.rulerSize / 2 - 6
+                );
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.font = '8px Kanit';
+                ctx.fillText(
+                    `กว้าง ${result.rollWidth}m`,
+                    colX + colWidthPx / 2, this.rulerSize / 2 + 8
                 );
             }
         }
 
-        // Left ruler (for segment height)
+        // Left ruler (for segment length)
         if (!this.mini) {
             const segHeightPx = segLen * this.scale;
             ctx.fillStyle = '#040d1a';
             ctx.fillRect(0, oy, this.rulerSize, segHeightPx);
             ctx.fillRect(0, 0, this.rulerSize, this.rulerSize);
+
+            // Roll width label in top-left corner
+            ctx.fillStyle = '#ffc107';
+            ctx.font = 'bold 9px Kanit';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`กว้าง`, this.rulerSize / 2, this.rulerSize / 2 - 6);
+            ctx.fillText(`${result.rollWidth}m`, this.rulerSize / 2, this.rulerSize / 2 + 6);
 
             ctx.fillStyle = '#fff';
             ctx.strokeStyle = 'rgba(255,255,255,0.3)';

@@ -16,6 +16,12 @@
         <a href="/Layout/Index?editPlanId=@Model.Id" class="btn btn-warning btn-sm">
             <i class="bi bi-pencil me-1"></i>แก้ไข
         </a>
+        <button id="btnExportCsv" class="btn btn-success btn-sm" onclick="exportPlanCsv()">
+            <i class="bi bi-file-earmark-excel me-1"></i>Export
+        </button>
+        <a href="/Layout/Report/@Model.Id" target="_blank" class="btn btn-primary btn-sm">
+            <i class="bi bi-printer me-1"></i>พิมพ์
+        </a>
         <span class="badge fs-6 @(Model.Status == "planned" ? "bg-primary" : Model.Status == "completed" ? "bg-success" : "bg-secondary")">
             @Model.Status.ToUpper()
         </span>
@@ -181,6 +187,37 @@
 @section Scripts {
     <script src="~/js/canvas-renderer.js" asp-append-version="true"></script>
     <script>
+        function exportPlanCsv() {
+            const header = ['#', 'Barcode', 'Order', 'พรม W(m)', 'พรม L(m)', 'พท.พรม(sqm)',
+                @(hasTag ? "'Tag W(m)','Tag L(m)','พท.Tag(sqm)','%เผื่อ Tag'," : "")
+                'ตัด W(m)', 'ตัด L(m)', 'พท.ตัด(sqm)',
+                @(hasTag ? "'%เผื่อ ตัด'," : "")
+                '%สูญเสีย', 'Type', 'Rotated'];
+            const rows = [header];
+            @{ int csvIdx = 1; }
+            @foreach (var item in Model.Items)
+            {
+                var cA = item.Width * item.Length;
+                var cuA = item.PackWidth * item.PackLength;
+                var tA = (item.TagWidth.HasValue && item.TagLength.HasValue) ? item.TagWidth.Value * item.TagLength.Value : (decimal?)null;
+                var tPct = (tA.HasValue && cA > 0) ? ((tA.Value - cA) / cA * 100) : (decimal?)null;
+                var cvtPct = (tA.HasValue && tA.Value > 0) ? ((cuA - tA.Value) / tA.Value * 100) : (decimal?)null;
+                var wPct = cA > 0 ? ((cuA - cA) / cA * 100) : (decimal?)null;
+                <text>rows.push([@csvIdx,'@item.BarcodeNo','@item.Orno',@item.Width.ToString("N2"),@item.Length.ToString("N2"),@cA.ToString("N2"),
+                    @(hasTag ? $"{(item.TagWidth.HasValue ? item.TagWidth.Value.ToString("N2") : "'-'")},{(item.TagLength.HasValue ? item.TagLength.Value.ToString("N2") : "'-'")},{(tA.HasValue ? tA.Value.ToString("N2") : "'-'")},{(tPct.HasValue ? tPct.Value.ToString("N1") : "'-'")}," : "")
+                    @item.PackWidth.ToString("N2"),@item.PackLength.ToString("N2"),@cuA.ToString("N2"),
+                    @(hasTag ? $"{(cvtPct.HasValue ? cvtPct.Value.ToString("N1") : "'-'")}," : "")
+                    @(wPct.HasValue ? wPct.Value.ToString("N1") : "'-'"),'@item.OrderType','@(item.IsRotated ? "Yes" : "-")']);</text>
+                csvIdx++;
+            }
+            const csv = rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = '@(Model.PlanCode)-detail.csv';
+            link.click();
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             const planData = @Html.Raw(Model.LayoutJson ?? "[]");
             const rollWidth = @Model.RollWidth;
