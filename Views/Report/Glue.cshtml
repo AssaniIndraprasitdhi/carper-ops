@@ -1,0 +1,351 @@
+@model IEnumerable<Capet_OPS.Models.ReportData>
+@{
+    ViewData["Title"] = "กรอกกาว";
+}
+
+<div class="d-flex flex-column" style="height: calc(100vh - 100px);">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="report-title title-green">
+            <i class="bi bi-droplet"></i>กรอกอัตราการใช้กาว
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="report-filter filter-green mb-2">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="filterOrderNo" placeholder="ค้นหา Order No..." oninput="applyFilter()">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                        <input type="text" class="form-control" id="filterBarcode" placeholder="ค้นหา HT_BARCODE..." oninput="applyFilter()">
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="filterGlueStatus" onchange="applyFilter()">
+                        <option value="">สถานะทั้งหมด</option>
+                        <option value="pending">ยังไม่มีกาว</option>
+                        <option value="done">มีกาวแล้ว</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="clearFilter()" title="ล้างตัวกรอง">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                </div>
+                <div class="col-md-3 text-end">
+                    <div class="filter-count" id="filterCount"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card flex-grow-1">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: calc(100vh - 260px); overflow-y: auto;">
+                <table class="table report-table table-sm mb-0" id="glueTable">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>HT_BARCODE</th>
+                            <th>Order No</th>
+                            <th class="text-center">รายการ</th>
+                            <th class="text-center">ผืนที่</th>
+                            <th class="text-end">กว้างเผื่อ</th>
+                            <th class="text-end">ยาวเผื่อ</th>
+                            <th class="text-end">ตรม.เผื่อ</th>
+                            <th>สถานะ</th>
+                            <th>กาว</th>
+                            <th class="text-end">ใช้กาว(kg)</th>
+                            <th class="text-end">กาว/ตรม.</th>
+                            <th style="width:60px;" class="text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            var idx = 0;
+                            @foreach (var item in Model)
+                            {
+                                idx++;
+                                var hasGlue = item.GlueUsage > 0;
+                                <tr data-order="@item.OrderNo" data-barcode="@item.HT_BARCODE" data-glue="@(hasGlue ? "done" : "pending")">
+                                    <td class="row-num">@idx</td>
+                                    <td><span class="barcode-badge">@item.HT_BARCODE</span></td>
+                                    <td style="font-weight:500;">@item.OrderNo</td>
+                                    <td class="text-center">@item.ListNo</td>
+                                    <td class="text-center">@item.ItemNo</td>
+                                    <td class="text-end val-accent">@item.ActualWidth.ToString("N4")</td>
+                                    <td class="text-end val-accent">@item.ActualLength.ToString("N4")</td>
+                                    <td class="text-end val-accent">@item.ActualSqm.ToString("N4")</td>
+                                    <td>
+                                        @if (hasGlue)
+                                        {
+                                            <span class="glue-status status-done"><i class="bi bi-check-circle-fill"></i> มีกาว</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="glue-status status-pending"><i class="bi bi-clock"></i> รอกรอก</span>
+                                        }
+                                    </td>
+                                    <td>@if (string.IsNullOrEmpty(item.GlueDesc)) { <span class="val-muted">-</span> } else { @item.GlueDesc }</td>
+                                    <td class="text-end">@if (hasGlue) { @item.GlueUsage.ToString("N4") } else { <span class="val-muted">-</span> }</td>
+                                    <td class="text-end">@if (hasGlue) { <span class="val-green">@item.GluePerSqm.ToString("N4")</span> } else { <span class="val-muted">-</span> }</td>
+                                    <td class="text-center">
+                                        <button class="btn-action action-edit"
+                                                onclick="openGlueModal('@item.HT_BARCODE', '@item.OrderNo', @item.ListNo, @item.ItemNo, @item.ActualWidth, @item.ActualLength, @item.ActualSqm)"
+                                                title="กรอกกาว">
+                                            <i class="bi bi-droplet"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="13" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox" style="font-size: 2rem; color: var(--gray-300);"></i>
+                                    <div class="mt-2">ยังไม่มีข้อมูล กรุณาบันทึกข้อมูลเผื่อก่อน</div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Glue Entry Modal -->
+<div class="modal fade" id="glueModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background: var(--gray-50);">
+                <h6 class="modal-title" style="font-weight:600;"><i class="bi bi-droplet me-2" style="color:var(--green);"></i>กรอกอัตราการใช้กาว</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Order Info -->
+                <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <small class="text-muted" style="font-size:0.68rem;">HT_BARCODE</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="glueBarcode">-</div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted" style="font-size:0.68rem;">Order No</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="glueOrderNo">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted" style="font-size:0.68rem;">รายการ</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="glueListNo">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted" style="font-size:0.68rem;">ผืนที่</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="glueItemNo">-</div>
+                        </div>
+                    </div>
+                    <hr style="margin: 0.5rem 0; border-color: var(--gray-200);">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <small class="text-muted" style="font-size:0.68rem;">กว้างเผื่อ</small>
+                            <div class="val-accent" style="font-weight:600;" id="glueActualWidth">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted" style="font-size:0.68rem;">ยาวเผื่อ</small>
+                            <div class="val-accent" style="font-weight:600;" id="glueActualLength">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted" style="font-size:0.68rem;">ตรม.เผื่อ</small>
+                            <div class="val-accent" style="font-weight:600;" id="glueActualSqm">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Glue Section -->
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small" style="font-weight:500;">เลือกกาว</label>
+                        <select class="form-select form-select-sm" id="glueSelect" onchange="onGlueSelect()">
+                            <option value="">-- เลือกกาว --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small" style="font-weight:500;">ปริมาณกาวที่ใช้ (kg)</label>
+                        <input type="number" step="0.0001" class="form-control form-control-sm" id="glueUsage"
+                               placeholder="0.0000" oninput="calculateGluePerSqm()">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small val-green">กาว/ตรม.</label>
+                        <input type="text" class="form-control form-control-sm val-green" style="background: rgba(16,185,129,0.05);" id="gluePerSqm" readonly>
+                    </div>
+                </div>
+
+                <input type="hidden" id="glueHiddenBarcode">
+                <input type="hidden" id="glueHiddenActualSqm">
+                <input type="hidden" id="glueHiddenGlueId">
+                <input type="hidden" id="glueHiddenGlueDesc">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="saveGlue()">
+                    <i class="bi bi-save me-1"></i>บันทึก
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    var glueList = [];
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadGlueList();
+        applyFilter();
+    });
+
+    function applyFilter() {
+        var orderNo = document.getElementById('filterOrderNo').value.toLowerCase();
+        var barcode = document.getElementById('filterBarcode').value.toLowerCase();
+        var glueStatus = document.getElementById('filterGlueStatus').value;
+        var rows = document.querySelectorAll('#glueTable tbody tr[data-order]');
+        var shown = 0;
+        var total = rows.length;
+
+        rows.forEach(function (row) {
+            var rowOrder = (row.getAttribute('data-order') || '').toLowerCase();
+            var rowBarcode = (row.getAttribute('data-barcode') || '').toLowerCase();
+            var rowGlue = row.getAttribute('data-glue') || '';
+            var match = true;
+            if (orderNo && rowOrder.indexOf(orderNo) === -1) match = false;
+            if (barcode && rowBarcode.indexOf(barcode) === -1) match = false;
+            if (glueStatus && rowGlue !== glueStatus) match = false;
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+
+        var countEl = document.getElementById('filterCount');
+        var hasFilter = orderNo || barcode || glueStatus;
+        countEl.className = 'filter-count' + (hasFilter ? ' has-filter' : '');
+        if (hasFilter) {
+            countEl.innerHTML = 'แสดง <span class="count-num">' + shown + '</span> จาก <span class="count-num">' + total + '</span> รายการ';
+        } else {
+            countEl.innerHTML = 'ทั้งหมด <span class="count-num">' + total + '</span> รายการ';
+        }
+    }
+
+    function clearFilter() {
+        document.getElementById('filterOrderNo').value = '';
+        document.getElementById('filterBarcode').value = '';
+        document.getElementById('filterGlueStatus').value = '';
+        applyFilter();
+    }
+
+    async function loadGlueList() {
+        try {
+            glueList = await fetchApi('/Report/GetGlueList');
+            var select = document.getElementById('glueSelect');
+            glueList.forEach(function (g) {
+                var opt = document.createElement('option');
+                opt.value = g.glueID;
+                opt.textContent = g.glueDesc;
+                opt.setAttribute('data-desc', g.glueDesc);
+                select.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('Failed to load glue list:', err);
+        }
+    }
+
+    function onGlueSelect() {
+        var select = document.getElementById('glueSelect');
+        var selectedOption = select.options[select.selectedIndex];
+        document.getElementById('glueHiddenGlueId').value = select.value;
+        document.getElementById('glueHiddenGlueDesc').value = selectedOption.getAttribute('data-desc') || '';
+    }
+
+    function openGlueModal(barcode, orderNo, listNo, itemNo, actualWidth, actualLength, actualSqm) {
+        document.getElementById('glueBarcode').textContent = barcode;
+        document.getElementById('glueOrderNo').textContent = orderNo;
+        document.getElementById('glueListNo').textContent = listNo;
+        document.getElementById('glueItemNo').textContent = itemNo;
+        document.getElementById('glueActualWidth').textContent = actualWidth.toFixed(4);
+        document.getElementById('glueActualLength').textContent = actualLength.toFixed(4);
+        document.getElementById('glueActualSqm').textContent = actualSqm.toFixed(4);
+
+        document.getElementById('glueHiddenBarcode').value = barcode;
+        document.getElementById('glueHiddenActualSqm').value = actualSqm;
+        document.getElementById('glueHiddenGlueId').value = '';
+        document.getElementById('glueHiddenGlueDesc').value = '';
+        document.getElementById('glueSelect').value = '';
+        document.getElementById('glueUsage').value = '';
+        document.getElementById('gluePerSqm').value = '';
+
+        var modal = new bootstrap.Modal(document.getElementById('glueModal'));
+        modal.show();
+    }
+
+    function calculateGluePerSqm() {
+        var usage = parseFloat(document.getElementById('glueUsage').value) || 0;
+        var actualSqm = parseFloat(document.getElementById('glueHiddenActualSqm').value) || 0;
+
+        if (actualSqm > 0 && usage > 0) {
+            var perSqm = usage / actualSqm;
+            document.getElementById('gluePerSqm').value = perSqm.toFixed(4);
+        } else {
+            document.getElementById('gluePerSqm').value = '';
+        }
+    }
+
+    async function saveGlue() {
+        var glueId = document.getElementById('glueHiddenGlueId').value;
+        var glueDesc = document.getElementById('glueHiddenGlueDesc').value;
+        var glueUsage = parseFloat(document.getElementById('glueUsage').value) || 0;
+        var actualSqm = parseFloat(document.getElementById('glueHiddenActualSqm').value) || 0;
+        var barcode = document.getElementById('glueHiddenBarcode').value;
+
+        if (!glueId) {
+            showAlert('กรุณาเลือกกาว', 'warning');
+            return;
+        }
+        if (glueUsage <= 0) {
+            showAlert('กรุณากรอกปริมาณกาว', 'warning');
+            return;
+        }
+
+        var data = {
+            hT_BARCODE: barcode,
+            glueID: glueId,
+            glueDesc: glueDesc,
+            glueUsage: glueUsage,
+            actualSqm: actualSqm
+        };
+
+        try {
+            var result = await fetchApi('/Report/SaveGlue', {
+                method: 'POST',
+                body: JSON.stringify(data),
+                loadingMessage: 'กำลังบันทึก...'
+            });
+
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('glueModal')).hide();
+                location.reload();
+            } else {
+                showAlert('ไม่พบรายการนี้ กรุณาบันทึกข้อมูลเผื่อก่อน');
+            }
+        } catch (err) {
+            showAlert('เกิดข้อผิดพลาดในการบันทึก');
+        }
+    }
+</script>
+}

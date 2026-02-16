@@ -42,15 +42,26 @@
                         <div class="text-muted" style="font-size:0.68rem;">ความกว้าง</div>
                         <div class="fw-medium small">@Model.RollWidth ม.</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <div class="text-muted" style="font-size:0.68rem;">พท.ทั้งหมด</div>
+                        <div class="fw-medium small">@Model.TotalArea ตร.ม.</div>
+                    </div>
+                    <div class="col-md-2">
                         <div class="text-muted" style="font-size:0.68rem;">วันที่สร้าง</div>
                         <div class="fw-medium small">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="text-muted" style="font-size:0.68rem;">สถานะ</div>
                         <div class="fw-medium small">@Model.Status</div>
                     </div>
                 </div>
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <div class="mt-2 pt-2" style="border-top: 1px solid var(--gray-200);">
+                        <span class="text-muted" style="font-size:0.68rem;">หมายเหตุ:</span>
+                        <span class="small">@Model.Notes</span>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -86,7 +97,7 @@
 
 <!-- Layout Visualization -->
 <div class="card mb-3">
-    <div class="card-body p-2" id="canvasContainer" style="overflow: auto; max-height: 45vh;">
+    <div class="card-body p-2" id="canvasContainer" style="overflow: auto; min-height: 250px; max-height: 45vh;">
         <canvas id="layoutCanvas"></canvas>
     </div>
 </div>
@@ -109,6 +120,9 @@
                         <th>#</th>
                         <th>Barcode</th>
                         <th>Order</th>
+                        <th class="text-center">รายการ</th>
+                        <th class="text-center">ผืนที่</th>
+                        <th class="text-center">จำนวน</th>
                         <th class="text-end">พรม W</th>
                         <th class="text-end">พรม L</th>
                         <th class="text-end">พท.พรม</th>
@@ -147,6 +161,9 @@
                             <td>@idx</td>
                             <td><code class="small">@item.BarcodeNo</code></td>
                             <td class="small">@item.Orno</td>
+                            <td class="text-center small">@(item.ListNo ?? "-")</td>
+                            <td class="text-center small">@(item.ItemNo ?? "-")</td>
+                            <td class="text-center small">@item.Qty</td>
                             <td class="text-end small">@item.Width.ToString("N2")</td>
                             <td class="text-end small">@item.Length.ToString("N2")</td>
                             <td class="text-end small">@carpetArea.ToString("N2")</td>
@@ -173,6 +190,10 @@
                             </td>
                             <td>
                                 <span class="badge @(item.OrderType == "Order" ? "bg-primary" : "bg-info")" style="font-size:0.65rem;">@item.OrderType</span>
+                                @if (item.AsPlan == "Y")
+                                {
+                                    <span class="badge bg-warning text-dark" style="font-size:0.6rem;">AsPlan</span>
+                                }
                             </td>
                             <td class="small">@(item.IsRotated ? "Yes" : "-")</td>
                         </tr>
@@ -187,34 +208,178 @@
 @section Scripts {
     <script src="~/js/canvas-renderer.js" asp-append-version="true"></script>
     <script>
+        const _planItems = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Items.Select(i => new {
+            i.BarcodeNo, i.Orno, i.ListNo, i.ItemNo, i.Qty, AsPlan = i.AsPlan ?? "",
+            i.Width, i.Length, i.PackWidth, i.PackLength, i.IsRotated, i.OrderType,
+            TagWidth = i.TagWidth, TagLength = i.TagLength
+        })));
+        const _planInfo = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+            Model.PlanCode,
+            CnvDesc = Model.CanvasType?.CnvDesc ?? "",
+            Model.RollWidth, Model.TotalLength, Model.TotalArea,
+            Model.UsedArea, Model.WasteArea, Model.EfficiencyPct,
+            Model.PieceCount, Model.Status,
+            CreatedAt = Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+        }));
+
         function exportPlanCsv() {
-            const header = ['#', 'Barcode', 'Order', 'พรม W(m)', 'พรม L(m)', 'พท.พรม(sqm)',
-                @(hasTag ? "'Tag W(m)','Tag L(m)','พท.Tag(sqm)','%เผื่อ Tag'," : "")
-                'ตัด W(m)', 'ตัด L(m)', 'พท.ตัด(sqm)',
-                @(hasTag ? "'%เผื่อ ตัด'," : "")
-                '%สูญเสีย', 'Type', 'Rotated'];
-            const rows = [header];
-            @{ int csvIdx = 1; }
-            @foreach (var item in Model.Items)
-            {
-                var cA = item.Width * item.Length;
-                var cuA = item.PackWidth * item.PackLength;
-                var tA = (item.TagWidth.HasValue && item.TagLength.HasValue) ? item.TagWidth.Value * item.TagLength.Value : (decimal?)null;
-                var tPct = (tA.HasValue && cA > 0) ? ((tA.Value - cA) / cA * 100) : (decimal?)null;
-                var cvtPct = (tA.HasValue && tA.Value > 0) ? ((cuA - tA.Value) / tA.Value * 100) : (decimal?)null;
-                var wPct = cA > 0 ? ((cuA - cA) / cA * 100) : (decimal?)null;
-                <text>rows.push([@csvIdx,'@item.BarcodeNo','@item.Orno',@item.Width.ToString("N2"),@item.Length.ToString("N2"),@cA.ToString("N2"),
-                    @(hasTag ? $"{(item.TagWidth.HasValue ? item.TagWidth.Value.ToString("N2") : "'-'")},{(item.TagLength.HasValue ? item.TagLength.Value.ToString("N2") : "'-'")},{(tA.HasValue ? tA.Value.ToString("N2") : "'-'")},{(tPct.HasValue ? tPct.Value.ToString("N1") : "'-'")}," : "")
-                    @item.PackWidth.ToString("N2"),@item.PackLength.ToString("N2"),@cuA.ToString("N2"),
-                    @(hasTag ? $"{(cvtPct.HasValue ? cvtPct.Value.ToString("N1") : "'-'")}," : "")
-                    @(wPct.HasValue ? wPct.Value.ToString("N1") : "'-'"),'@item.OrderType','@(item.IsRotated ? "Yes" : "-")']);</text>
-                csvIdx++;
+            const p = _planInfo;
+            const hasTag = _planItems.some(i => i.TagWidth || i.TagLength);
+
+            // Color helpers
+            function pctColor(val, lowT, highT) {
+                if (val == null) return '#333';
+                return val <= lowT ? '#1b7a2b' : val <= highT ? '#c27800' : '#c0392b';
             }
-            const csv = rows.map(r => r.join(',')).join('\n');
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            function pctBg(val, lowT, highT) {
+                if (val == null) return '#fff';
+                return val <= lowT ? '#e8f5e9' : val <= highT ? '#fff8e1' : '#fce4ec';
+            }
+
+            // Styles
+            const S = {
+                title: 'background:#1a3a5c;color:#fff;font-size:16pt;font-weight:bold;padding:8px;',
+                subtitle: 'background:#1a3a5c;color:#aec6e0;font-size:9pt;padding:4px 8px;',
+                labelH: 'background:#e8edf2;color:#555;font-size:8pt;font-weight:bold;padding:4px 8px;border:1px solid #d0d8e0;',
+                valueH: 'background:#fff;color:#1a3a5c;font-size:9pt;font-weight:bold;padding:4px 8px;border:1px solid #d0d8e0;',
+                metricLabel: 'background:#f0f4f8;color:#666;font-size:8pt;padding:4px 8px;border:1px solid #d0d8e0;',
+                metricVal: 'font-size:11pt;font-weight:bold;padding:4px 8px;border:1px solid #d0d8e0;',
+                thd: 'background:#2c5282;color:#fff;font-size:8pt;font-weight:bold;padding:5px 6px;border:1px solid #1a3a5c;text-align:center;',
+                td: 'font-size:8pt;padding:4px 6px;border:1px solid #dde3ea;',
+                tdr: 'font-size:8pt;padding:4px 6px;border:1px solid #dde3ea;text-align:right;',
+                totLabel: 'background:#edf2f7;font-size:9pt;font-weight:bold;padding:5px 6px;border:2px solid #2c5282;text-align:right;',
+                totVal: 'background:#edf2f7;font-size:9pt;font-weight:bold;padding:5px 6px;border:2px solid #2c5282;text-align:right;color:#1a3a5c;',
+            };
+            const rowBg = ['#ffffff', '#f7fafc'];
+
+            // Compute cols count
+            let colCount = 13; // base: #, barcode, order, รายการ, ผืนที่, จำนวน, AsPlan, pW, pL, pA, cW, cL, cA
+            if (hasTag) colCount += 4 + 1; // tag W,L,A,%tag + %cutVsTag
+            colCount += 3; // %waste, type, rotated
+
+            let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>';
+            html += '<table>';
+
+            // === TITLE ===
+            html += '<tr><td colspan="' + colCount + '" style="' + S.title + '">&#128196; ระบบวางแผนผ้าใบ - Layout Report</td></tr>';
+            html += '<tr><td colspan="' + colCount + '" style="' + S.subtitle + '">แผน: ' + p.PlanCode + ' | ' + p.CnvDesc + ' | สร้าง: ' + p.CreatedAt + '</td></tr>';
+            html += '<tr><td colspan="' + colCount + '" style="height:6px;"></td></tr>';
+
+            // === PLAN INFO ===
+            html += '<tr>';
+            html += '<td colspan="2" style="' + S.labelH + '">รหัสแผน</td><td colspan="2" style="' + S.valueH + '">' + p.PlanCode + '</td>';
+            html += '<td style="width:10px;"></td>';
+            html += '<td colspan="2" style="' + S.labelH + '">ชนิดผ้าใบ</td><td colspan="3" style="' + S.valueH + '">' + p.CnvDesc + '</td>';
+            html += '</tr>';
+            html += '<tr>';
+            html += '<td colspan="2" style="' + S.labelH + '">ความกว้างม้วน</td><td colspan="2" style="' + S.valueH + '">' + p.RollWidth + ' ม.</td>';
+            html += '<td></td>';
+            html += '<td colspan="2" style="' + S.labelH + '">ความยาวรวม</td><td colspan="3" style="' + S.valueH + '">' + p.TotalLength + ' ม.</td>';
+            html += '</tr>';
+            html += '<tr>';
+            html += '<td colspan="2" style="' + S.labelH + '">สถานะ</td><td colspan="2" style="' + S.valueH + '">' + p.Status.toUpperCase() + '</td>';
+            html += '<td></td>';
+            html += '<td colspan="2" style="' + S.labelH + '">พท.ทั้งหมด</td><td colspan="3" style="' + S.valueH + '">' + p.TotalArea + ' ตร.ม.</td>';
+            html += '</tr>';
+            html += '<tr><td colspan="' + colCount + '" style="height:6px;"></td></tr>';
+
+            // === SUMMARY METRICS ===
+            html += '<tr>';
+            html += '<td colspan="2" style="' + S.metricLabel + '">จำนวนชิ้น</td>';
+            html += '<td colspan="2" style="' + S.metricVal + 'color:#c27800;background:#fff8e1;">' + p.PieceCount + ' ชิ้น</td>';
+            html += '<td></td>';
+            html += '<td colspan="2" style="' + S.metricLabel + '">ประสิทธิภาพ</td>';
+            html += '<td colspan="3" style="' + S.metricVal + 'color:#1b7a2b;background:#e8f5e9;">' + p.EfficiencyPct + '%</td>';
+            html += '</tr>';
+            html += '<tr>';
+            html += '<td colspan="2" style="' + S.metricLabel + '">พท.ใช้จริง</td>';
+            html += '<td colspan="2" style="' + S.metricVal + 'color:#2c5282;background:#ebf5fb;">' + p.UsedArea + ' ตร.ม.</td>';
+            html += '<td></td>';
+            html += '<td colspan="2" style="' + S.metricLabel + '">พท.สูญเสีย</td>';
+            html += '<td colspan="3" style="' + S.metricVal + 'color:#c0392b;background:#fce4ec;">' + p.WasteArea + ' ตร.ม.</td>';
+            html += '</tr>';
+            html += '<tr><td colspan="' + colCount + '" style="height:8px;"></td></tr>';
+
+            // === TABLE HEADER ===
+            html += '<tr>';
+            ['#', 'Barcode', 'Order', 'รายการ', 'ผืนที่', 'จำนวน', 'AsPlan',
+             'พรม W(m)', 'พรม L(m)', 'พท.พรม'].forEach(h => { html += '<td style="' + S.thd + '">' + h + '</td>'; });
+            if (hasTag) ['Tag W(m)', 'Tag L(m)', 'พท.Tag', '%เผื่อ Tag'].forEach(h => { html += '<td style="' + S.thd + '">' + h + '</td>'; });
+            ['ตัด W(m)', 'ตัด L(m)', 'พท.ตัด'].forEach(h => { html += '<td style="' + S.thd + '">' + h + '</td>'; });
+            if (hasTag) html += '<td style="' + S.thd + '">%เผื่อ ตัด</td>';
+            ['%สูญเสีย', 'Type', 'Rotated'].forEach(h => { html += '<td style="' + S.thd + '">' + h + '</td>'; });
+            html += '</tr>';
+
+            // === ITEMS DATA ===
+            let totalCarpetArea = 0, totalCutArea = 0, totalTagArea = 0;
+            _planItems.forEach((it, idx) => {
+                const carpetArea = it.Width * it.Length;
+                const cutArea = it.PackWidth * it.PackLength;
+                const tagArea = (it.TagWidth && it.TagLength) ? it.TagWidth * it.TagLength : null;
+                const tagPct = (tagArea && carpetArea > 0) ? ((tagArea - carpetArea) / carpetArea * 100) : null;
+                const cutVsTagPct = (tagArea && tagArea > 0) ? ((cutArea - tagArea) / tagArea * 100) : null;
+                const wastePct = carpetArea > 0 ? ((cutArea - carpetArea) / carpetArea * 100) : null;
+                totalCarpetArea += carpetArea;
+                totalCutArea += cutArea;
+                if (tagArea) totalTagArea += tagArea;
+
+                const bg = rowBg[idx % 2];
+                const s = S.tdr + 'background:' + bg + ';';
+                const sl = S.td + 'background:' + bg + ';';
+
+                html += '<tr>';
+                html += '<td style="' + sl + 'text-align:center;">' + (idx + 1) + '</td>';
+                html += '<td style="' + sl + 'font-family:monospace;">' + it.BarcodeNo + '</td>';
+                html += '<td style="' + sl + '">' + it.Orno + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + (it.ListNo || '-') + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + (it.ItemNo || '-') + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + it.Qty + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + (it.AsPlan === 'Y' ? '<b style="color:#92400e;">Y</b>' : '-') + '</td>';
+                html += '<td style="' + s + '">' + it.Width.toFixed(2) + '</td>';
+                html += '<td style="' + s + '">' + it.Length.toFixed(2) + '</td>';
+                html += '<td style="' + s + 'font-weight:bold;">' + carpetArea.toFixed(2) + '</td>';
+                if (hasTag) {
+                    html += '<td style="' + s + '">' + (it.TagWidth ? it.TagWidth.toFixed(2) : '-') + '</td>';
+                    html += '<td style="' + s + '">' + (it.TagLength ? it.TagLength.toFixed(2) : '-') + '</td>';
+                    html += '<td style="' + s + 'font-weight:bold;">' + (tagArea ? tagArea.toFixed(2) : '-') + '</td>';
+                    html += '<td style="' + s + 'color:' + pctColor(tagPct, 5, 15) + ';background:' + pctBg(tagPct, 5, 15) + ';font-weight:bold;">' + (tagPct != null ? tagPct.toFixed(1) + '%' : '-') + '</td>';
+                }
+                html += '<td style="' + s + '">' + it.PackWidth.toFixed(2) + '</td>';
+                html += '<td style="' + s + '">' + it.PackLength.toFixed(2) + '</td>';
+                html += '<td style="' + s + 'font-weight:bold;">' + cutArea.toFixed(2) + '</td>';
+                if (hasTag) {
+                    html += '<td style="' + s + 'color:' + pctColor(cutVsTagPct, 5, 15) + ';background:' + pctBg(cutVsTagPct, 5, 15) + ';font-weight:bold;">' + (cutVsTagPct != null ? cutVsTagPct.toFixed(1) + '%' : '-') + '</td>';
+                }
+                html += '<td style="' + s + 'color:' + pctColor(wastePct, 10, 20) + ';background:' + pctBg(wastePct, 10, 20) + ';font-weight:bold;">' + (wastePct != null ? wastePct.toFixed(1) + '%' : '-') + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + (it.OrderType === 'Order' ? '<b style="color:#2c5282;">Order</b>' : '<b style="color:#0e7490;">Stock</b>') + '</td>';
+                html += '<td style="' + sl + 'text-align:center;">' + (it.IsRotated ? 'Yes' : '-') + '</td>';
+                html += '</tr>';
+            });
+
+            // === TOTALS ROW ===
+            const totalWastePct = totalCarpetArea > 0 ? ((totalCutArea - totalCarpetArea) / totalCarpetArea * 100) : 0;
+            html += '<tr>';
+            html += '<td colspan="7" style="' + S.totLabel + '">&#128202; รวมทั้งหมด</td>';
+            html += '<td style="' + S.totVal + '"></td><td style="' + S.totVal + '"></td>';
+            html += '<td style="' + S.totVal + '">' + totalCarpetArea.toFixed(2) + '</td>';
+            if (hasTag) {
+                html += '<td style="' + S.totVal + '"></td><td style="' + S.totVal + '"></td>';
+                html += '<td style="' + S.totVal + '">' + totalTagArea.toFixed(2) + '</td>';
+                html += '<td style="' + S.totVal + '"></td>';
+            }
+            html += '<td style="' + S.totVal + '"></td><td style="' + S.totVal + '"></td>';
+            html += '<td style="' + S.totVal + '">' + totalCutArea.toFixed(2) + '</td>';
+            if (hasTag) html += '<td style="' + S.totVal + '"></td>';
+            html += '<td style="' + S.totVal + 'color:' + pctColor(totalWastePct, 10, 20) + ';">' + totalWastePct.toFixed(1) + '%</td>';
+            html += '<td style="' + S.totVal + '"></td><td style="' + S.totVal + '"></td>';
+            html += '</tr>';
+
+            html += '</table></body></html>';
+
+            const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = '@(Model.PlanCode)-detail.csv';
+            link.download = p.PlanCode + '-detail.xls';
             link.click();
         }
 
@@ -233,13 +398,17 @@
                         packWidth: item.PackWidth ?? item.packWidth,
                         packLength: item.PackLength ?? item.packLength,
                         orno: item.ORNO ?? item.orno ?? item.oRNO,
+                        barcodeNo: item.BarcodeNo ?? item.barcodeNo,
                         originalWidth: item.OriginalWidth ?? item.originalWidth,
                         originalLength: item.OriginalLength ?? item.originalLength,
                         isRotated: item.IsRotated ?? item.isRotated
                     }))
                 };
-                const renderer = new CanvasRenderer('layoutCanvas');
-                renderer.render(result);
+                requestAnimationFrame(() => {
+                    const renderer = new CanvasRenderer('layoutCanvas');
+                    renderer.setFitMode('width');
+                    renderer.render(result);
+                });
             }
         });
     </script>

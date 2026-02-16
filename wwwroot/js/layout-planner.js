@@ -127,10 +127,45 @@
             }
             currentOrders.forEach(o => o._selected = false);
             expandedGroups = {};
+
+            // Auto-fill tag from report allowance data
+            await autoFillTagsFromReport();
+
             renderOrdersList();
             updateSelectedCount();
         } catch (err) {
             showAlert('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
+        }
+    }
+
+    async function autoFillTagsFromReport() {
+        try {
+            const barcodes = currentOrders.map(o => o.barcodeNo).filter(Boolean);
+            if (barcodes.length === 0) return;
+
+            const tagMap = await fetchApi('/Report/GetTagsByBarcodes', {
+                method: 'POST',
+                body: JSON.stringify(barcodes)
+            });
+
+            if (!tagMap || typeof tagMap !== 'object') return;
+
+            let filled = 0;
+            currentOrders.forEach(o => {
+                const tag = tagMap[o.barcodeNo];
+                if (tag && tag.tagWidth > 0 && tag.tagLength > 0) {
+                    o._tagWidth = tag.tagWidth;
+                    o._tagLength = tag.tagLength;
+                    o._tagFromReport = true;
+                    filled++;
+                }
+            });
+
+            if (filled > 0) {
+                console.log(`[Tag] Auto-filled ${filled} items from report data`);
+            }
+        } catch (err) {
+            console.warn('[Tag] Could not load report data:', err.message);
         }
     }
 
@@ -220,6 +255,11 @@
                 const tagRequired = isAsPlan ? 'tag-required' : '';
                 const missingTag = isAsPlan && o._selected && (!o._tagWidth || !o._tagLength);
                 const missingClass = missingTag ? 'tag-missing' : '';
+                const tagLocked = o._tagFromReport ? 'tag-locked' : '';
+                const tagReadonly = o._tagFromReport ? 'readonly' : '';
+                const tagIcon = o._tagFromReport
+                    ? '<i class="bi bi-lock-fill" style="font-size:0.5rem;"></i>'
+                    : (isAsPlan ? '<i class="bi bi-pencil-fill" style="font-size:0.5rem;"></i>' : 'Tag');
                 return `<div class="order-subitem ${selClass}" data-idx="${origIdx}">
                     <input type="checkbox" class="form-check-input order-cb" data-idx="${origIdx}" ${checked}>
                     <div class="flex-grow-1 overflow-hidden">
@@ -228,11 +268,11 @@
                             ${asPlanBadge}
                             <span class="order-size">${formatNumber(o.width)}x${formatNumber(o.length)}m</span>
                         </div>
-                        <div class="tag-input-row ${tagRequired} ${missingClass}" onclick="event.stopPropagation();">
-                            <span class="tag-label">${isAsPlan ? '<i class="bi bi-pencil-fill" style="font-size:0.5rem;"></i>' : 'Tag'}</span>
-                            <input type="number" class="tag-input tag-w" data-idx="${origIdx}" value="${tw}" placeholder="W" step="0.01">
+                        <div class="tag-input-row ${tagRequired} ${missingClass} ${tagLocked}" onclick="event.stopPropagation();">
+                            <span class="tag-label">${tagIcon}</span>
+                            <input type="number" class="tag-input tag-w" data-idx="${origIdx}" value="${tw}" placeholder="W" step="0.01" ${tagReadonly}>
                             <span class="tag-x">x</span>
-                            <input type="number" class="tag-input tag-l" data-idx="${origIdx}" value="${tl}" placeholder="L" step="0.01">
+                            <input type="number" class="tag-input tag-l" data-idx="${origIdx}" value="${tl}" placeholder="L" step="0.01" ${tagReadonly}>
                             <span class="tag-unit">m</span>
                         </div>
                     </div>

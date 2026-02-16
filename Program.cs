@@ -21,6 +21,14 @@ var sqlUser = Environment.GetEnvironmentVariable("SQLSERVER_USER");
 var sqlPass = Environment.GetEnvironmentVariable("SQLSERVER_PASSWORD");
 var sqlConnStr = $"Server={sqlHost},{sqlPort};Database={sqlDb};User Id={sqlUser};Password={sqlPass};TrustServerCertificate=True;Encrypt=False;";
 
+// CMTProduction connection string from .env
+var cmtHost = Environment.GetEnvironmentVariable("CMTPRODUCTION_HOST");
+var cmtPort = Environment.GetEnvironmentVariable("CMTPRODUCTION_PORT");
+var cmtDb = Environment.GetEnvironmentVariable("CMTPRODUCTION_DATABASE");
+var cmtUser = Environment.GetEnvironmentVariable("CMTPRODUCTION_USER");
+var cmtPass = Environment.GetEnvironmentVariable("CMTPRODUCTION_PASSWORD");
+var cmtConnStr = $"Server={cmtHost},{cmtPort};Database={cmtDb};User Id={cmtUser};Password={cmtPass};TrustServerCertificate=True;Encrypt=False;";
+
 // PostgreSQL via EF Core
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(pgConnStr));
@@ -28,12 +36,19 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // SQL Server connection string for Dapper
 builder.Services.AddSingleton(new SqlServerSettings { ConnectionString = sqlConnStr });
 
+// CMTProduction connection string for Dapper
+builder.Services.AddSingleton(new CmtProductionSettings { ConnectionString = cmtConnStr });
+
 // Register services
 builder.Services.AddScoped<ICanvasTypeService, CanvasTypeService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ILayoutCalculationService, LayoutCalculationService>();
 builder.Services.AddScoped<ILayoutPlanService, LayoutPlanService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
+
+// CMT Report Data services
+builder.Services.AddScoped<CmtCarpetService>();
+builder.Services.AddScoped<CmtReportService>();
 
 builder.Services.AddControllersWithViews();
 
@@ -57,6 +72,10 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await context.Database.MigrateAsync();
     await SeedData.Initialize(context);
+
+    // Ensure CMT Report Data table exists
+    var cmtReportService = scope.ServiceProvider.GetRequiredService<CmtReportService>();
+    await cmtReportService.EnsureTableExistsAsync();
 }
 
 if (!app.Environment.IsDevelopment())

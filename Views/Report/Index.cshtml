@@ -1,0 +1,485 @@
+@model IEnumerable<Capet_OPS.Models.ReportData>
+@{
+    ViewData["Title"] = "รายงานเผื่อ";
+}
+
+<div class="d-flex flex-column" style="height: calc(100vh - 100px);">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="report-title title-blue">
+            <i class="bi bi-rulers"></i>รายงานอัตราการเผื่อ
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openSearchModal()">
+            <i class="bi bi-plus-lg me-1"></i>เพิ่มรายการ
+        </button>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="report-filter filter-blue mb-2">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="filterOrderNo" placeholder="ค้นหา Order No..." oninput="applyFilter()">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                        <input type="text" class="form-control" id="filterBarcode" placeholder="ค้นหา HT_BARCODE..." oninput="applyFilter()">
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="clearFilter()">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>ล้างตัวกรอง
+                    </button>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="filter-count" id="filterCount"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card flex-grow-1">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: calc(100vh - 260px); overflow-y: auto;">
+                <table class="table report-table table-sm mb-0" id="reportTable">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>HT_BARCODE</th>
+                            <th>Order No</th>
+                            <th class="text-center">รายการ</th>
+                            <th class="text-center">ผืนที่</th>
+                            <th class="text-end">กว้าง</th>
+                            <th class="text-end">ยาว</th>
+                            <th class="text-end">%เผื่อกว้าง</th>
+                            <th class="text-end">%เผื่อยาว</th>
+                            <th class="text-end">กว้างเผื่อ</th>
+                            <th class="text-end">ยาวเผื่อ</th>
+                            <th class="text-end">ตรม.เผื่อ</th>
+                            <th style="width:60px;" class="text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            var idx = 0;
+                            @foreach (var item in Model)
+                            {
+                                idx++;
+                                <tr data-order="@item.OrderNo" data-barcode="@item.HT_BARCODE">
+                                    <td class="row-num">@idx</td>
+                                    <td><span class="barcode-badge">@item.HT_BARCODE</span></td>
+                                    <td style="font-weight:500;">@item.OrderNo</td>
+                                    <td class="text-center">@item.ListNo</td>
+                                    <td class="text-center">@item.ItemNo</td>
+                                    <td class="text-end">@item.Width.ToString("N4")</td>
+                                    <td class="text-end">@item.Length.ToString("N4")</td>
+                                    <td class="text-end">@item.AllowanceWidthPct.ToString("N2")%</td>
+                                    <td class="text-end">@item.AllowanceLengthPct.ToString("N2")%</td>
+                                    <td class="text-end val-accent">@item.ActualWidth.ToString("N4")</td>
+                                    <td class="text-end val-accent">@item.ActualLength.ToString("N4")</td>
+                                    <td class="text-end val-accent">@item.ActualSqm.ToString("N4")</td>
+                                    <td class="text-center">
+                                        <button class="btn-action action-delete" onclick="deleteReport(@item.ID, '@item.HT_BARCODE')" title="ลบ">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="13" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox" style="font-size: 2rem; color: var(--gray-300);"></i>
+                                    <div class="mt-2">ยังไม่มีข้อมูล กดปุ่ม "เพิ่มรายการ" เพื่อเริ่มต้น</div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Search Modal -->
+<div class="modal fade" id="searchModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background: var(--gray-50);">
+                <h6 class="modal-title" style="font-weight:600;"><i class="bi bi-search me-2" style="color:var(--accent);"></i>ค้นหา Order</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Order No</span>
+                            <input type="text" class="form-control" id="searchOrderNo" placeholder="ค้นหา Order...">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">รายการที่</span>
+                            <input type="number" class="form-control" id="searchListNo" placeholder="เลขรายการ">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ผืนที่</span>
+                            <input type="number" class="form-control" id="searchItemNo" placeholder="เลขผืน">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary btn-sm w-100" onclick="searchOrders()">
+                            <i class="bi bi-search me-1"></i>ค้นหา
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table report-table table-sm mb-0">
+                        <thead class="sticky-top">
+                            <tr>
+                                <th>Order No</th>
+                                <th class="text-center">รายการ</th>
+                                <th class="text-center">ผืนที่</th>
+                                <th class="text-end">กว้าง</th>
+                                <th class="text-end">ยาว</th>
+                                <th class="text-end">ตรม.</th>
+                                <th class="text-center">ผืน</th>
+                                <th class="text-end">ตรม.รวม</th>
+                                <th>HT_BARCODE</th>
+                                <th style="width:60px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="searchResultBody">
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-4">กรุณากรอกข้อมูลแล้วกดค้นหา</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Allowance Entry Modal -->
+<div class="modal fade" id="entryModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background: var(--gray-50);">
+                <h6 class="modal-title" style="font-weight:600;"><i class="bi bi-rulers me-2" style="color:var(--accent);"></i>กรอกอัตราการเผื่อ</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Order Info -->
+                <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <small class="text-muted" style="font-size:0.68rem;">HT_BARCODE</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="infoBarcode">-</div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted" style="font-size:0.68rem;">Order No</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="infoOrderNo">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted" style="font-size:0.68rem;">รายการที่</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="infoListNo">-</div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted" style="font-size:0.68rem;">ผืนที่</small>
+                            <div style="font-weight:600; color:var(--gray-800);" id="infoItemNo">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Allowance Section -->
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small">กว้างเดิม</label>
+                        <input type="text" class="form-control form-control-sm bg-light" id="entryWidth" readonly>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">% เผื่อกว้าง</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="entryAllowanceWidthPct"
+                                   placeholder="0.00" oninput="calculateValues()">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">เผื่อกว้าง</label>
+                        <input type="text" class="form-control form-control-sm bg-light" id="entryAllowanceWidth" readonly>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small val-accent">กว้างเผื่อ</label>
+                        <input type="text" class="form-control form-control-sm val-accent" style="background: rgba(59,130,246,0.05);" id="entryActualWidth" readonly>
+                    </div>
+                    <div class="col-md-3"></div>
+                    <div class="col-md-3">
+                        <label class="form-label small">ยาวเดิม</label>
+                        <input type="text" class="form-control form-control-sm bg-light" id="entryLength" readonly>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">% เผื่อยาว</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" class="form-control" id="entryAllowanceLengthPct"
+                                   placeholder="0.00" oninput="calculateValues()">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">เผื่อยาว</label>
+                        <input type="text" class="form-control form-control-sm bg-light" id="entryAllowanceLength" readonly>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small val-accent">ยาวเผื่อ</label>
+                        <input type="text" class="form-control form-control-sm val-accent" style="background: rgba(59,130,246,0.05);" id="entryActualLength" readonly>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small val-accent">ตรม.เผื่อ</label>
+                        <input type="text" class="form-control form-control-sm val-accent" style="background: rgba(59,130,246,0.05);" id="entryActualSqm" readonly>
+                    </div>
+                </div>
+
+                <input type="hidden" id="entrySqm">
+                <input type="hidden" id="entryQty">
+                <input type="hidden" id="entryTotalSqm">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveAllowance()">
+                    <i class="bi bi-save me-1"></i>บันทึก
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    var selectedOrder = null;
+
+    function openSearchModal() {
+        document.getElementById('searchOrderNo').value = '';
+        document.getElementById('searchListNo').value = '';
+        document.getElementById('searchItemNo').value = '';
+        document.getElementById('searchResultBody').innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">กรุณากรอกข้อมูลแล้วกดค้นหา</td></tr>';
+        var modal = new bootstrap.Modal(document.getElementById('searchModal'));
+        modal.show();
+    }
+
+    function getExistingBarcodes() {
+        var barcodes = new Set();
+        document.querySelectorAll('#reportTable tbody tr[data-barcode]').forEach(function (row) {
+            barcodes.add(row.getAttribute('data-barcode'));
+        });
+        return barcodes;
+    }
+
+    async function searchOrders() {
+        var data = {
+            orderNo: document.getElementById('searchOrderNo').value,
+            listNo: document.getElementById('searchListNo').value ? parseInt(document.getElementById('searchListNo').value) : null,
+            itemNo: document.getElementById('searchItemNo').value ? parseInt(document.getElementById('searchItemNo').value) : null
+        };
+
+        try {
+            var result = await fetchApi('/Report/SearchOrders', {
+                method: 'POST',
+                body: JSON.stringify(data),
+                loadingMessage: 'กำลังค้นหา...'
+            });
+
+            var existing = getExistingBarcodes();
+            var html = '';
+            if (result.length === 0) {
+                html = '<tr><td colspan="10" class="text-center text-muted py-4">ไม่พบข้อมูล</td></tr>';
+            } else {
+                result.forEach(function (item) {
+                    var added = existing.has(item.hT_BARCODE);
+                    html += '<tr' + (added ? ' style="opacity:0.45;"' : '') + '>';
+                    html += '<td style="font-weight:500;">' + (item.orderNo || '') + '</td>';
+                    html += '<td class="text-center">' + (item.listNo || 0) + '</td>';
+                    html += '<td class="text-center">' + (item.itemNo || 0) + '</td>';
+                    html += '<td class="text-end">' + (item.width ? item.width.toFixed(4) : '0.0000') + '</td>';
+                    html += '<td class="text-end">' + (item.length ? item.length.toFixed(4) : '0.0000') + '</td>';
+                    html += '<td class="text-end">' + (item.sqm ? item.sqm.toFixed(4) : '0.0000') + '</td>';
+                    html += '<td class="text-center">' + (item.qty || 0) + '</td>';
+                    html += '<td class="text-end">' + (item.totalSqm ? item.totalSqm.toFixed(4) : '0.0000') + '</td>';
+                    html += '<td><span class="barcode-badge">' + (item.hT_BARCODE || '') + '</span></td>';
+                    if (added) {
+                        html += '<td><span class="badge bg-secondary py-1 px-2" style="font-size:0.68rem;">เพิ่มแล้ว</span></td>';
+                    } else {
+                        html += '<td><button class="btn btn-sm btn-outline-primary py-0 px-2" onclick=\'selectOrder(' + JSON.stringify(item) + ')\'>เลือก</button></td>';
+                    }
+                    html += '</tr>';
+                });
+            }
+            document.getElementById('searchResultBody').innerHTML = html;
+        } catch (err) {
+            showAlert('เกิดข้อผิดพลาดในการค้นหา');
+        }
+    }
+
+    function selectOrder(order) {
+        selectedOrder = order;
+        bootstrap.Modal.getInstance(document.getElementById('searchModal')).hide();
+
+        document.getElementById('infoBarcode').textContent = order.hT_BARCODE || '';
+        document.getElementById('infoOrderNo').textContent = order.orderNo || '';
+        document.getElementById('infoListNo').textContent = order.listNo || 0;
+        document.getElementById('infoItemNo').textContent = order.itemNo || 0;
+        document.getElementById('entryWidth').value = order.width ? order.width.toFixed(4) : '0.0000';
+        document.getElementById('entryLength').value = order.length ? order.length.toFixed(4) : '0.0000';
+        document.getElementById('entrySqm').value = order.sqm || 0;
+        document.getElementById('entryQty').value = order.qty || 0;
+        document.getElementById('entryTotalSqm').value = order.totalSqm || 0;
+
+        document.getElementById('entryAllowanceWidthPct').value = '';
+        document.getElementById('entryAllowanceLengthPct').value = '';
+        document.getElementById('entryAllowanceWidth').value = '';
+        document.getElementById('entryAllowanceLength').value = '';
+        document.getElementById('entryActualWidth').value = '';
+        document.getElementById('entryActualLength').value = '';
+        document.getElementById('entryActualSqm').value = '';
+
+        var modal = new bootstrap.Modal(document.getElementById('entryModal'));
+        modal.show();
+    }
+
+    function calculateValues() {
+        var width = parseFloat(document.getElementById('entryWidth').value) || 0;
+        var length = parseFloat(document.getElementById('entryLength').value) || 0;
+        var allowWidthPct = parseFloat(document.getElementById('entryAllowanceWidthPct').value) || 0;
+        var allowLengthPct = parseFloat(document.getElementById('entryAllowanceLengthPct').value) || 0;
+
+        var allowWidth = width * allowWidthPct / 100;
+        var allowLength = length * allowLengthPct / 100;
+
+        document.getElementById('entryAllowanceWidth').value = allowWidth.toFixed(4);
+        document.getElementById('entryAllowanceLength').value = allowLength.toFixed(4);
+
+        var actualWidth = width + allowWidth;
+        var actualLength = length + allowLength;
+        var actualSqm = actualWidth * actualLength;
+
+        document.getElementById('entryActualWidth').value = actualWidth.toFixed(4);
+        document.getElementById('entryActualLength').value = actualLength.toFixed(4);
+        document.getElementById('entryActualSqm').value = actualSqm.toFixed(4);
+    }
+
+    async function saveAllowance() {
+        if (!selectedOrder) {
+            showAlert('กรุณาเลือก Order ก่อน', 'warning');
+            return;
+        }
+
+        var allowWidthPct = parseFloat(document.getElementById('entryAllowanceWidthPct').value) || 0;
+        var allowLengthPct = parseFloat(document.getElementById('entryAllowanceLengthPct').value) || 0;
+
+        if (allowWidthPct === 0 && allowLengthPct === 0) {
+            showAlert('กรุณากรอก % เผื่ออย่างน้อย 1 รายการ', 'warning');
+            return;
+        }
+
+        var data = {
+            hT_BARCODE: selectedOrder.hT_BARCODE,
+            orderNo: selectedOrder.orderNo,
+            listNo: selectedOrder.listNo,
+            itemNo: selectedOrder.itemNo,
+            width: selectedOrder.width || 0,
+            length: selectedOrder.length || 0,
+            allowanceWidthPct: allowWidthPct,
+            allowanceLengthPct: allowLengthPct,
+            sqm: selectedOrder.sqm || 0,
+            qty: selectedOrder.qty || 0,
+            totalSqm: selectedOrder.totalSqm || 0
+        };
+
+        try {
+            var result = await fetchApi('/Report/SaveAllowance', {
+                method: 'POST',
+                body: JSON.stringify(data),
+                loadingMessage: 'กำลังบันทึก...'
+            });
+
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('entryModal')).hide();
+                location.reload();
+            } else {
+                showAlert('เกิดข้อผิดพลาดในการบันทึก');
+            }
+        } catch (err) {
+            showAlert('เกิดข้อผิดพลาดในการบันทึก');
+        }
+    }
+
+    async function deleteReport(id, barcode) {
+        if (!confirm('ต้องการลบรายการ ' + barcode + ' หรือไม่?')) return;
+
+        try {
+            var result = await fetchApi('/Report/Delete', {
+                method: 'POST',
+                body: JSON.stringify(id),
+                loadingMessage: 'กำลังลบ...'
+            });
+
+            if (result.success) {
+                location.reload();
+            }
+        } catch (err) {
+            showAlert('เกิดข้อผิดพลาดในการลบ');
+        }
+    }
+
+    function applyFilter() {
+        var orderNo = document.getElementById('filterOrderNo').value.toLowerCase();
+        var barcode = document.getElementById('filterBarcode').value.toLowerCase();
+        var rows = document.querySelectorAll('#reportTable tbody tr[data-order]');
+        var shown = 0;
+        var total = rows.length;
+
+        rows.forEach(function (row) {
+            var rowOrder = (row.getAttribute('data-order') || '').toLowerCase();
+            var rowBarcode = (row.getAttribute('data-barcode') || '').toLowerCase();
+            var match = true;
+            if (orderNo && rowOrder.indexOf(orderNo) === -1) match = false;
+            if (barcode && rowBarcode.indexOf(barcode) === -1) match = false;
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+
+        var countEl = document.getElementById('filterCount');
+        var hasFilter = orderNo || barcode;
+        countEl.className = 'filter-count' + (hasFilter ? ' has-filter' : '');
+        if (hasFilter) {
+            countEl.innerHTML = 'แสดง <span class="count-num">' + shown + '</span> จาก <span class="count-num">' + total + '</span> รายการ';
+        } else {
+            countEl.innerHTML = 'ทั้งหมด <span class="count-num">' + total + '</span> รายการ';
+        }
+    }
+
+    function clearFilter() {
+        document.getElementById('filterOrderNo').value = '';
+        document.getElementById('filterBarcode').value = '';
+        applyFilter();
+    }
+
+    document.addEventListener('DOMContentLoaded', applyFilter);
+
+    document.querySelectorAll('#searchOrderNo, #searchListNo, #searchItemNo').forEach(function (el) {
+        el.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') searchOrders();
+        });
+    });
+</script>
+}

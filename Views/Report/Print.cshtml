@@ -1,0 +1,193 @@
+@model Capet_OPS.Models.ReportData
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>รายงาน - @Model.HT_BARCODE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Kanit', sans-serif; font-size: 14px; color: #333; padding: 30px; background: #fff; }
+        .print-header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+        .print-header h3 { font-weight: 500; margin-bottom: 5px; }
+        .print-header .subtitle { color: #666; font-size: 13px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .info-item { padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .info-item .label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .info-item .value { font-weight: 500; font-size: 15px; }
+        .section-title { font-weight: 500; font-size: 15px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #0d6efd; }
+        .section-title.glue { border-left-color: #198754; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th, td { border: 1px solid #dee2e6; padding: 8px 12px; text-align: left; }
+        th { background: #f8f9fa; font-weight: 500; font-size: 13px; }
+        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        td.highlight { font-weight: 500; color: #0d6efd; }
+        td.success { font-weight: 500; color: #198754; }
+        .print-footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; font-size: 12px; color: #888; }
+        .btn-print { background: #0d6efd; color: #fff; border: none; padding: 8px 24px; border-radius: 4px; cursor: pointer; font-family: 'Kanit', sans-serif; font-size: 14px; }
+        .btn-print:hover { background: #0b5ed7; }
+        .no-print { text-align: center; margin-bottom: 20px; }
+
+        @@media print {
+            .no-print { display: none; }
+            body { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button class="btn-print" onclick="window.print()">
+            พิมพ์รายงาน
+        </button>
+    </div>
+
+    <div class="print-header">
+        <h3>รายงานอัตราการเผื่อและอัตราการใช้กาว</h3>
+        <div class="subtitle">CMT Production Report</div>
+    </div>
+
+    <!-- Order Info -->
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="label">HT_BARCODE</div>
+            <div class="value">@Model.HT_BARCODE</div>
+        </div>
+        <div class="info-item">
+            <div class="label">Order No</div>
+            <div class="value">@Model.OrderNo</div>
+        </div>
+        <div class="info-item">
+            <div class="label">รายการที่</div>
+            <div class="value">@Model.ListNo</div>
+        </div>
+        <div class="info-item">
+            <div class="label">ผืนที่</div>
+            <div class="value">@Model.ItemNo</div>
+        </div>
+    </div>
+
+    <!-- Allowance Table -->
+    <div class="section-title">อัตราการเผื่อ</div>
+    <table>
+        <thead>
+            <tr>
+                <th>รายการ</th>
+                <th style="text-align:right;">ค่าเดิม</th>
+                <th style="text-align:right;">% เผื่อ</th>
+                <th style="text-align:right;">ค่าเผื่อ</th>
+                <th style="text-align:right;">ค่ารวมเผื่อ</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>กว้าง (Width)</td>
+                <td class="num">@Model.Width.ToString("N4")</td>
+                <td class="num">@Model.AllowanceWidthPct.ToString("N2")%</td>
+                <td class="num">@Model.AllowanceWidth.ToString("N4")</td>
+                <td class="num highlight">@Model.ActualWidth.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>ยาว (Length)</td>
+                <td class="num">@Model.Length.ToString("N4")</td>
+                <td class="num">@Model.AllowanceLengthPct.ToString("N2")%</td>
+                <td class="num">@Model.AllowanceLength.ToString("N4")</td>
+                <td class="num highlight">@Model.ActualLength.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>ตรม. (Sqm)</td>
+                <td class="num">@Model.Sqm.ToString("N4")</td>
+                <td class="num">-</td>
+                <td class="num">-</td>
+                <td class="num highlight">@Model.ActualSqm.ToString("N4")</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Per Piece Details -->
+    <div class="section-title">ข้อมูลผืน</div>
+    <table>
+        <thead>
+            <tr>
+                <th>รายการ</th>
+                <th style="text-align:right;">ค่า</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>จำนวนผืน (Qty)</td>
+                <td class="num">@Model.Qty</td>
+            </tr>
+            <tr>
+                <td>ตรม.รวมเดิม (Total Sqm)</td>
+                <td class="num">@Model.TotalSqm.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>ตรม.เผื่อต่อผืน (Actual Sqm/Piece)</td>
+                <td class="num highlight">@Model.ActualSqm.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>ตรม.เผื่อรวม (Total Actual Sqm)</td>
+                <td class="num highlight">@((Model.ActualSqm * Model.Qty).ToString("N4"))</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Glue Usage Table -->
+    <div class="section-title glue">อัตราการใช้กาว</div>
+    <table>
+        <thead>
+            <tr>
+                <th>รายการ</th>
+                <th style="text-align:right;">ค่า</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>รหัสกาว (Glue ID)</td>
+                <td>@Model.GlueID</td>
+            </tr>
+            <tr>
+                <td>รายละเอียดกาว</td>
+                <td>@Model.GlueDesc</td>
+            </tr>
+            <tr>
+                <td>อัตราการใช้กาว (kg)</td>
+                <td class="num">@Model.GlueUsage.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>อัตราการใช้กาวต่อ ตรม. (kg/sqm)</td>
+                <td class="num success">@Model.GluePerSqm.ToString("N4")</td>
+            </tr>
+            <tr>
+                <td>กาวต่อผืน (kg/piece)</td>
+                <td class="num success">
+                    @if (Model.Qty > 0)
+                    {
+                        @((Model.GlueUsage / Model.Qty).ToString("N4"))
+                    }
+                    else
+                    {
+                        @:0.0000
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>กาวรวมทั้งหมด (Total kg)</td>
+                <td class="num success">@Model.GlueUsage.ToString("N4")</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="print-footer">
+        <div>วันที่พิมพ์: @DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")</div>
+        <div>CMT Production Report System</div>
+    </div>
+</body>
+</html>

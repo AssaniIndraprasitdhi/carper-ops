@@ -201,6 +201,9 @@
                 <tr>
                     <th style="width:24px;">#</th>
                     <th>Barcode</th>
+                    <th class="text-right">รายการ</th>
+                    <th class="text-right">ผืนที่</th>
+                    <th class="text-right">จำนวน</th>
                     <th class="text-right">พรม W(m)</th>
                     <th class="text-right">พรม L(m)</th>
                     <th class="text-right">พท.พรม</th>
@@ -236,7 +239,16 @@
                     var wastePct = carpetArea > 0 ? ((cutArea - carpetArea) / carpetArea * 100) : (decimal?)null;
                     <tr>
                         <td>@seq</td>
-                        <td class="mono">@item.BarcodeNo</td>
+                        <td class="mono">
+                            @item.BarcodeNo
+                            @if (item.AsPlan == "Y")
+                            {
+                                <span style="background:#fef3c7;color:#92400e;font-size:8px;padding:1px 4px;border-radius:3px;margin-left:2px;">AsPlan</span>
+                            }
+                        </td>
+                        <td class="text-right">@(item.ListNo ?? "-")</td>
+                        <td class="text-right">@(item.ItemNo ?? "-")</td>
+                        <td class="text-right">@item.Qty</td>
                         <td class="text-right">@item.Width.ToString("N2")</td>
                         <td class="text-right">@item.Length.ToString("N2")</td>
                         <td class="text-right">@carpetArea.ToString("N2")</td>
