@@ -1,299 +1,167 @@
 @model Capet_OPS.Models.Entities.LayoutPlan
 @{
-    Layout = null; // standalone printable page
-    var items = Model.Items.OrderBy(i => i.Orno).ThenBy(i => i.BarcodeNo).ToList();
-    var groups = items.GroupBy(i => i.Orno ?? "(ไม่มี Order)").ToList();
+    Layout = null;
 }
 <!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Report - @Model.PlanCode</title>
+    <title>Layout - @Model.PlanCode</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Kanit', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #fff; color: #2d3436; font-size: 11px; padding: 10mm; }
+        html, body { height: 100%; overflow: hidden; background: #fff; color: #2d3436; }
+        body { display: flex; flex-direction: column; padding: 8mm; }
 
-        .report-header {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            border-bottom: 3px solid #0d2137; padding-bottom: 10px; margin-bottom: 15px;
-        }
-        .report-header h1 { font-size: 20px; color: #0d2137; font-weight: 700; }
-        .report-header .subtitle { font-size: 11px; color: #666; }
-        .report-header .plan-code {
-            font-size: 16px; font-weight: 700; color: #0d47a1;
-            background: #e3f2fd; padding: 6px 14px; border-radius: 8px;
-        }
-
-        .info-grid {
-            display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
-            margin-bottom: 15px;
-        }
-        .info-box {
-            background: #f8f9fa; border-radius: 8px; padding: 8px 10px;
-            text-align: center; border: 1px solid #eee;
-        }
-        .info-box .label { font-size: 9px; color: #888; text-transform: uppercase; }
-        .info-box .value { font-size: 16px; font-weight: 700; }
-        .info-box .unit { font-size: 9px; color: #999; }
-        .val-green { color: #00b894; }
-        .val-red { color: #e17055; }
-        .val-blue { color: #0984e3; }
-        .val-navy { color: #0d47a1; }
-        .val-orange { color: #e67e22; }
-
-        .section-title {
-            font-size: 13px; font-weight: 600; color: #0d2137;
-            margin: 15px 0 8px; padding-bottom: 4px;
-            border-bottom: 2px solid #0d47a1;
-            display: flex; align-items: center; gap: 6px;
-        }
-        .section-title .icon { color: #0d47a1; }
-
-        .canvas-container {
-            text-align: center; margin-bottom: 15px;
-            border: 1px solid #eee; border-radius: 8px; padding: 10px;
-            background: #fafafa;
-        }
-        .canvas-container canvas { max-width: 100%; }
-
-        .group-header {
-            background: linear-gradient(135deg, #e3f2fd, #e8f4fd);
-            padding: 6px 10px; font-size: 11px; font-weight: 600;
-            border-radius: 6px; margin-top: 8px; margin-bottom: 4px;
+        .header {
             display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 3px solid #0d2137; padding-bottom: 6px; margin-bottom: 6px;
+            flex-shrink: 0;
         }
-        .group-header .orno-name { color: #0d47a1; }
-        .group-header .group-count { color: #636e72; font-weight: 400; font-size: 10px; }
-        .group-header .group-type {
-            font-size: 9px; padding: 2px 8px; border-radius: 10px; color: #fff;
+        .header h1 { font-size: 16px; color: #0d2137; font-weight: 700; }
+        .header .subtitle { font-size: 10px; color: #666; }
+        .header .plan-code {
+            font-size: 13px; font-weight: 700; color: #0d47a1;
+            background: #e3f2fd; padding: 4px 10px; border-radius: 6px;
         }
-        .type-order { background: #0d47a1; }
-        .type-sample { background: #ad1457; }
 
-        table { width: 100%; border-collapse: collapse; font-size: 10px; }
-        table th {
-            background: #f0f0f0; color: #555; font-weight: 600; font-size: 9px;
-            text-transform: uppercase; padding: 5px 6px; text-align: left;
-            border-bottom: 2px solid #ddd;
+        .info-bar {
+            display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+            font-size: 11px; color: #555; margin-bottom: 6px; flex-shrink: 0;
         }
-        table td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; }
-        table tr:hover { background: #fafafa; }
-        .mono { font-family: 'Courier New', monospace; font-size: 9px; color: #0d47a1; font-weight: 600; }
-        .rotated-badge { background: #fff3e0; color: #e67e22; font-size: 8px; padding: 1px 5px; border-radius: 3px; }
-        .text-right { text-align: right; }
+        .info-bar .item { display: flex; align-items: center; gap: 4px; }
+        .info-bar .label { color: #999; font-size: 9px; }
+        .info-bar .val { font-weight: 600; color: #0d2137; }
 
-        .summary-row {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-top: 12px; padding-top: 8px; border-top: 2px solid #0d2137;
-            font-size: 10px; color: #666;
+        .canvas-wrap {
+            flex: 1; min-height: 0;
+            border: 1px solid #ddd; border-radius: 6px; background: #fafafa;
+            padding: 4px; display: flex; align-items: flex-start; justify-content: flex-start;
+            overflow-x: auto; overflow-y: hidden;
         }
-        .summary-row .total { font-size: 12px; font-weight: 700; color: #0d2137; }
+        .canvas-wrap canvas { display: block; }
 
         .footer {
-            margin-top: 20px; padding-top: 8px; border-top: 1px solid #ddd;
+            margin-top: 6px; padding-top: 4px; border-top: 1px solid #ddd;
             display: flex; justify-content: space-between; font-size: 9px; color: #aaa;
+            flex-shrink: 0;
         }
 
-        .no-print { margin-bottom: 15px; text-align: center; }
+        .no-print { margin-bottom: 6px; text-align: center; flex-shrink: 0; }
         .no-print button {
-            padding: 8px 24px; border: none; border-radius: 8px; cursor: pointer;
-            font-family: 'Kanit'; font-size: 13px; font-weight: 500; margin: 0 4px;
+            padding: 5px 18px; border: none; border-radius: 6px; cursor: pointer;
+            font-family: 'Kanit'; font-size: 11px; font-weight: 500; margin: 0 4px;
         }
         .btn-print { background: linear-gradient(135deg, #0d47a1, #1976d2); color: #fff; }
         .btn-back { background: #eee; color: #555; }
 
+        .zoom-bar {
+            position: fixed; bottom: 16px; right: 16px;
+            display: flex; align-items: center; gap: 4px;
+            background: rgba(13,33,55,0.9); border-radius: 8px;
+            padding: 4px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .zoom-bar button {
+            width: 28px; height: 28px; border: none; border-radius: 6px;
+            background: rgba(255,255,255,0.15); color: #fff; font-size: 16px;
+            cursor: pointer; font-family: 'Kanit'; display: flex; align-items: center; justify-content: center;
+        }
+        .zoom-bar button:hover { background: rgba(255,255,255,0.3); }
+        .zoom-bar .zoom-label {
+            color: #fff; font-size: 11px; min-width: 44px; text-align: center; font-weight: 500;
+        }
+
+        /* Legend table — print only */
+        .print-legend { display: none; }
+
+        /* — Mobile — */
+        @@media (max-width: 767px) {
+            body { padding: 4mm; overflow: auto; height: auto; }
+            .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+            .header .plan-code { font-size: 11px; }
+            .info-bar { font-size: 10px; gap: 10px; }
+            .canvas-wrap { flex: none; min-height: 40vh; max-height: 60vh; overflow: auto; }
+            .zoom-bar { bottom: 8px; right: 8px; padding: 3px 6px; }
+            .zoom-bar button { width: 24px; height: 24px; font-size: 14px; }
+            .zoom-bar .zoom-label { font-size: 10px; min-width: 36px; }
+            .no-print button { padding: 4px 12px; font-size: 10px; }
+        }
+        @@media (max-width: 480px) {
+            body { padding: 2mm; }
+            .header h1 { font-size: 13px; }
+            .header .subtitle { font-size: 9px; }
+            .info-bar { font-size: 9px; gap: 6px; flex-wrap: wrap; }
+            .canvas-wrap { min-height: 30vh; max-height: 50vh; border-radius: 4px; }
+            .footer { font-size: 8px; }
+        }
+
         @@media print {
+            html, body { height: auto; overflow: visible; }
             body { padding: 5mm; }
-            .no-print { display: none !important; }
-            .info-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .group-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .section-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .group-type { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print, .zoom-bar { display: none !important; }
+            .canvas-wrap { flex: none; height: 85vh; page-break-after: always; }
+            .print-legend {
+                display: block; page-break-inside: avoid;
+            }
+            .print-legend h3 { font-size: 11px; margin-bottom: 4px; color: #0d2137; }
+            .print-legend table {
+                width: 100%; border-collapse: collapse; font-size: 9px;
+            }
+            .print-legend th {
+                background: #0d2137; color: #fff; padding: 3px 6px;
+                text-align: left; font-weight: 500;
+            }
+            .print-legend td {
+                padding: 2px 6px; border-bottom: 1px solid #eee;
+            }
+            .print-legend tr:nth-child(even) { background: #f8f9fa; }
+            .print-legend .color-swatch {
+                display: inline-block; width: 12px; height: 12px;
+                border-radius: 2px; vertical-align: middle; margin-right: 4px;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Print Controls -->
     <div class="no-print">
         <button class="btn-print" onclick="window.print()">&#128424; พิมพ์ / บันทึก PDF</button>
         <button class="btn-back" onclick="window.close()">ปิดหน้านี้</button>
     </div>
 
-    <!-- Header -->
-    <div class="report-header">
+    <div class="header">
         <div>
-            <h1>ระบบวางแผนผ้าใบ - Layout Report</h1>
-            <div class="subtitle">รายงานแผนการวางผ้า | @Model.CanvasType?.CnvDesc</div>
+            <h1>Layout Report</h1>
+            <div class="subtitle">@Model.CanvasType?.CnvDesc</div>
         </div>
         <div class="plan-code">@Model.PlanCode</div>
     </div>
 
-    <!-- Metrics -->
-    <div class="info-grid">
-        <div class="info-box">
-            <div class="label">ประสิทธิภาพ</div>
-            <div class="value val-green">@Model.EfficiencyPct%</div>
-        </div>
-        <div class="info-box">
-            <div class="label">จำนวนชิ้น</div>
-            <div class="value val-navy">@Model.PieceCount</div>
-            <div class="unit">ชิ้น</div>
-        </div>
-        <div class="info-box">
-            <div class="label">ความกว้างม้วน</div>
-            <div class="value val-blue">@Model.RollWidth</div>
-            <div class="unit">เมตร</div>
-        </div>
-        <div class="info-box">
-            <div class="label">ความยาวรวม</div>
-            <div class="value val-orange">@Model.TotalLength</div>
-            <div class="unit">เมตร</div>
-        </div>
-        <div class="info-box">
-            <div class="label">พท. ใช้จริง</div>
-            <div class="value val-blue">@Model.UsedArea</div>
-            <div class="unit">ตร.ม.</div>
-        </div>
-        <div class="info-box">
-            <div class="label">สูญเสีย</div>
-            <div class="value val-red">@Model.WasteArea</div>
-            <div class="unit">ตร.ม.</div>
-        </div>
+    <div class="info-bar">
+        <div class="item"><span class="label">กว้าง</span> <span class="val">@Model.RollWidth m</span></div>
+        <div class="item"><span class="label">ยาว</span> <span class="val">@Model.TotalLength m</span></div>
+        <div class="item"><span class="label">ชิ้น</span> <span class="val">@Model.PieceCount</span></div>
+        <div class="item"><span class="label">วันที่</span> <span class="val">@Model.CreatedAt.ToString("yyyy-MM-dd")</span></div>
     </div>
 
-    <!-- Canvas -->
-    <div class="section-title"><span class="icon">&#9632;</span> แผนผังการวางผ้า</div>
-    <div class="canvas-container">
+    <div class="canvas-wrap" id="canvasContainer">
         <canvas id="reportCanvas"></canvas>
     </div>
 
-    <!-- Items Grouped by ORNO -->
-    <div class="section-title"><span class="icon">&#9632;</span> รายการชิ้นงาน (@Model.Items.Count รายการ, @groups.Count Orders)</div>
-
-    @{
-        int seq = 1;
-        bool hasAnyTag = items.Any(i => i.TagWidth.HasValue || i.TagLength.HasValue);
-    }
-    @foreach (var grp in groups)
-    {
-        var grpItems = grp.ToList();
-        var firstItem = grpItems.First();
-        var grpArea = grpItems.Sum(i => i.Area);
-        var asPlanCount = grpItems.Count(i => !string.IsNullOrEmpty(i.AsPlan) && i.AsPlan == "Y");
-        <div class="group-header">
-            <div>
-                <span class="orno-name">@grp.Key</span>
-                <span class="group-count">(@grpItems.Count ชิ้น | @grpArea.ToString("N2") ตร.ม.)</span>
-                @if (asPlanCount > 0)
-                {
-                    <span class="group-type" style="background:#f59e0b;">@asPlanCount AsPlan</span>
-                }
-            </div>
-            <span class="group-type @(firstItem.OrderType == "Order" ? "type-order" : "type-sample")">
-                @firstItem.OrderType
-            </span>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:24px;">#</th>
-                    <th>Barcode</th>
-                    <th class="text-right">รายการ</th>
-                    <th class="text-right">ผืนที่</th>
-                    <th class="text-right">จำนวน</th>
-                    <th class="text-right">พรม W(m)</th>
-                    <th class="text-right">พรม L(m)</th>
-                    <th class="text-right">พท.พรม</th>
-                    @if (hasAnyTag)
-                    {
-                        <th class="text-right">Tag W(m)</th>
-                        <th class="text-right">Tag L(m)</th>
-                        <th class="text-right">พท.Tag</th>
-                        <th class="text-right">%เผื่อ Tag</th>
-                    }
-                    <th class="text-right">ตัด W(m)</th>
-                    <th class="text-right">ตัด L(m)</th>
-                    <th class="text-right">พท.ตัด</th>
-                    @if (hasAnyTag)
-                    {
-                        <th class="text-right">%เผื่อ ตัด</th>
-                    }
-                    <th class="text-right">%สูญเสีย</th>
-                    <th>R</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in grpItems)
-                {
-                    var carpetArea = item.Width * item.Length;
-                    var cutArea = item.PackWidth * item.PackLength;
-                    var tagArea = (item.TagWidth.HasValue && item.TagLength.HasValue)
-                        ? item.TagWidth.Value * item.TagLength.Value : (decimal?)null;
-                    var tagAllowPct = (tagArea.HasValue && carpetArea > 0)
-                        ? ((tagArea.Value - carpetArea) / carpetArea * 100) : (decimal?)null;
-                    var cutVsTagPct = (tagArea.HasValue && tagArea.Value > 0)
-                        ? ((cutArea - tagArea.Value) / tagArea.Value * 100) : (decimal?)null;
-                    var wastePct = carpetArea > 0 ? ((cutArea - carpetArea) / carpetArea * 100) : (decimal?)null;
-                    <tr>
-                        <td>@seq</td>
-                        <td class="mono">
-                            @item.BarcodeNo
-                            @if (item.AsPlan == "Y")
-                            {
-                                <span style="background:#fef3c7;color:#92400e;font-size:8px;padding:1px 4px;border-radius:3px;margin-left:2px;">AsPlan</span>
-                            }
-                        </td>
-                        <td class="text-right">@(item.ListNo ?? "-")</td>
-                        <td class="text-right">@(item.ItemNo ?? "-")</td>
-                        <td class="text-right">@item.Qty</td>
-                        <td class="text-right">@item.Width.ToString("N2")</td>
-                        <td class="text-right">@item.Length.ToString("N2")</td>
-                        <td class="text-right">@carpetArea.ToString("N2")</td>
-                        @if (hasAnyTag)
-                        {
-                            <td class="text-right">@(item.TagWidth.HasValue ? item.TagWidth.Value.ToString("N2") : "-")</td>
-                            <td class="text-right">@(item.TagLength.HasValue ? item.TagLength.Value.ToString("N2") : "-")</td>
-                            <td class="text-right">@(tagArea.HasValue ? tagArea.Value.ToString("N2") : "-")</td>
-                            <td class="text-right" style="color:@(tagAllowPct.HasValue ? (tagAllowPct.Value <= 5 ? "#00b894" : tagAllowPct.Value <= 15 ? "#e67e22" : "#e17055") : "inherit"); font-weight:600;">
-                                @(tagAllowPct.HasValue ? tagAllowPct.Value.ToString("N1") + "%" : "-")
-                            </td>
-                        }
-                        <td class="text-right">@item.PackWidth.ToString("N2")</td>
-                        <td class="text-right">@item.PackLength.ToString("N2")</td>
-                        <td class="text-right">@cutArea.ToString("N2")</td>
-                        @if (hasAnyTag)
-                        {
-                            <td class="text-right" style="color:@(cutVsTagPct.HasValue ? (cutVsTagPct.Value <= 5 ? "#00b894" : cutVsTagPct.Value <= 15 ? "#e67e22" : "#e17055") : "inherit"); font-weight:600;">
-                                @(cutVsTagPct.HasValue ? cutVsTagPct.Value.ToString("N1") + "%" : "-")
-                            </td>
-                        }
-                        <td class="text-right" style="color:@(wastePct.HasValue ? (wastePct.Value <= 10 ? "#00b894" : wastePct.Value <= 20 ? "#e67e22" : "#e17055") : "inherit"); font-weight:600;">
-                            @(wastePct.HasValue ? wastePct.Value.ToString("N1") + "%" : "-")
-                        </td>
-                        <td>@(item.IsRotated ? Html.Raw("<span class='rotated-badge'>R</span>") : Html.Raw("-"))</td>
-                    </tr>
-                    seq++;
-                }
-            </tbody>
-        </table>
-    }
-
-    <!-- Summary -->
-    <div class="summary-row">
-        <div>วันที่สร้าง: @Model.CreatedAt.ToString("yyyy-MM-dd HH:mm") | สถานะ: @Model.Status.ToUpper()</div>
-        <div class="total">รวม @Model.Items.Count ชิ้น | @Model.UsedArea ตร.ม. | ประสิทธิภาพ @Model.EfficiencyPct%</div>
+    <div class="zoom-bar" id="zoomBar">
+        <button id="btnZoomOut">−</button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button id="btnZoomIn">+</button>
+        <button id="btnZoomReset" style="font-size:11px; width:auto; padding:0 8px;">Reset</button>
     </div>
 
-    <!-- Footer -->
+    <div class="print-legend" id="printLegend"></div>
+
     <div class="footer">
         <span>ระบบวางแผนผ้าใบ</span>
         <span>พิมพ์เมื่อ: <script>document.write(new Date().toLocaleString('th-TH'))</script></span>
     </div>
 
-    <!-- Canvas Script -->
     <script src="/js/canvas-renderer.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -302,7 +170,45 @@
             const totalLength = @Model.TotalLength;
 
             if (planData && planData.length > 0) {
+                // สลับแกน: X = ความยาว (แนวนอน), Y = ความกว้าง (แนวตั้ง)
                 const result = {
+                    rollWidth: totalLength,   // X axis = ความยาวผ้า
+                    totalLength: rollWidth,    // Y axis = ความกว้างผ้า
+                    packedItems: planData.map(item => ({
+                        packX: item.PackY ?? item.packY,           // Y→X (ตำแหน่งยาว→แนวนอน)
+                        packY: item.PackX ?? item.packX,           // X→Y (ตำแหน่งกว้าง→แนวตั้ง)
+                        packWidth: item.PackLength ?? item.packLength,  // ยาว→แนวนอน
+                        packLength: item.PackWidth ?? item.packWidth,   // กว้าง→แนวตั้ง
+                        orno: item.ORNO ?? item.orno ?? item.oRNO,
+                        barcodeNo: item.BarcodeNo ?? item.barcodeNo,
+                        originalWidth: item.OriginalWidth ?? item.originalWidth,
+                        originalLength: item.OriginalLength ?? item.originalLength,
+                        isRotated: item.IsRotated ?? item.isRotated
+                    }))
+                };
+                const renderer = new CanvasRenderer('reportCanvas');
+                renderer.setFitMode('height');
+                renderer.render(result);
+
+                // Zoom controls
+                const zoomLabel = document.getElementById('zoomLabel');
+                const updateLabel = (z) => { zoomLabel.textContent = Math.round(z * 100) + '%'; };
+                renderer._onZoomChange = updateLabel;
+
+                document.getElementById('btnZoomIn').addEventListener('click', () => renderer.zoomIn());
+                document.getElementById('btnZoomOut').addEventListener('click', () => renderer.zoomOut());
+                document.getElementById('btnZoomReset').addEventListener('click', () => renderer.zoomReset());
+
+                // Ctrl + Mouse wheel zoom
+                document.getElementById('canvasContainer').addEventListener('wheel', (e) => {
+                    if (!e.ctrlKey) return;
+                    e.preventDefault();
+                    if (e.deltaY < 0) renderer.zoomIn();
+                    else renderer.zoomOut();
+                }, { passive: false });
+
+                // Print data: แกนดั้งเดิม X=กว้าง Y=ยาว (wrap columns)
+                const printResult = {
                     rollWidth: rollWidth,
                     totalLength: totalLength,
                     packedItems: planData.map(item => ({
@@ -317,8 +223,43 @@
                         isRotated: item.IsRotated ?? item.isRotated
                     }))
                 };
-                const renderer = new CanvasRenderer('reportCanvas');
-                renderer.render(result);
+
+                // Build print legend table
+                const legendEl = document.getElementById('printLegend');
+                const items = printResult.packedItems;
+                let rows = items.map((it, i) => {
+                    const color = renderer._getItemColor(it);
+                    const w = it.packWidth, l = it.packLength;
+                    const area = (w * l).toFixed(2);
+                    const rot = it.isRotated ? 'R' : '';
+                    return `<tr>
+                        <td><span class="color-swatch" style="background:${color}"></span>#${i + 1}</td>
+                        <td>${it.orno || ''}</td>
+                        <td>${it.barcodeNo || ''}</td>
+                        <td>${it.originalWidth || w} x ${it.originalLength || l} m</td>
+                        <td>${w} x ${l} m ${rot}</td>
+                        <td>${area}</td>
+                    </tr>`;
+                }).join('');
+                legendEl.innerHTML = `<h3>รายละเอียดชิ้นผ้า (${items.length} ชิ้น)</h3>
+                    <table>
+                        <thead><tr><th>#</th><th>Order</th><th>Barcode</th><th>ขนาดจริง</th><th>ขนาดวาง</th><th>ตร.ม.</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+
+                // Print: wrap mode เต็มจอเหมือนหน้า Algorithms
+                window.addEventListener('beforeprint', () => {
+                    renderer.setZoom(1.0, false);
+                    renderer.noWrap = false;
+                    renderer.fitMode = 'fit';
+                    renderer.render(printResult);
+                });
+                window.addEventListener('afterprint', () => {
+                    renderer.noWrap = false;
+                    renderer.fitMode = 'height';
+                    renderer.setFitMode('height');
+                    renderer.render(result);
+                });
             }
         });
     </script>

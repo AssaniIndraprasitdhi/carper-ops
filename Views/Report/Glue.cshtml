@@ -339,7 +339,8 @@
 
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('glueModal')).hide();
-                location.reload();
+                showAlert('บันทึกกาวสำเร็จ', 'success');
+                setTimeout(() => location.reload(), 1200);
             } else {
                 showAlert('ไม่พบรายการนี้ กรุณาบันทึกข้อมูลเผื่อก่อน');
             }

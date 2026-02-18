@@ -414,7 +414,8 @@
 
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('entryModal')).hide();
-                location.reload();
+                showAlert('บันทึกอัตราเผื่อสำเร็จ', 'success');
+                setTimeout(() => location.reload(), 1200);
             } else {
                 showAlert('เกิดข้อผิดพลาดในการบันทึก');
             }
@@ -424,7 +425,13 @@
     }
 
     async function deleteReport(id, barcode) {
-        if (!confirm('ต้องการลบรายการ ' + barcode + ' หรือไม่?')) return;
+        var ok = await showConfirm('ต้องการลบรายการ <b style="color:#e53935;">' + barcode + '</b> หรือไม่?', {
+            title: 'ยืนยันการลบ',
+            type: 'danger',
+            confirmText: 'ลบ',
+            cancelText: 'ยกเลิก'
+        });
+        if (!ok) return;
 
         try {
             var result = await fetchApi('/Report/Delete', {
@@ -434,7 +441,8 @@
             });
 
             if (result.success) {
-                location.reload();
+                showAlert('ลบรายการ ' + barcode + ' สำเร็จ', 'success');
+                setTimeout(() => location.reload(), 1200);
             }
         } catch (err) {
             showAlert('เกิดข้อผิดพลาดในการลบ');

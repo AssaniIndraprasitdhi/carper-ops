@@ -11,11 +11,9 @@
     let detailRenderer = null;
     let currentDetailIndex = null;
     let totalSelected = 0;
-    let viewMode = 'optimize'; // 'actual' (scroll) or 'optimize' (fit-to-screen)
+    // viewMode removed — always 'width' (actual) with zoom controls
     let editingPlanId = null;   // non-null when editing an existing plan
     let editingPlanCode = null;
-    const rollWidthColors = {};
-    const colorPalette = ['#1976d2', '#00e676', '#ff7043', '#29b6f6', '#ffd54f', '#0d47a1', '#26c6da', '#64b5f6'];
 
     // DOM refs
     const $ = id => document.getElementById(id);
@@ -23,6 +21,12 @@
     // Helper: get AsPlan value regardless of JSON property casing
     function getAsPlan(o) {
         return o.asplan || o.ASPLAN || o.asPlan || o.AsPlan || '';
+    }
+
+    // Zoom label — top-level so accessible from both bindEvents and openDetail
+    function updateZoomLabel(level) {
+        const btn = $('btnZoomReset');
+        if (btn) btn.textContent = Math.round((level ?? (detailRenderer ? detailRenderer.getZoomLevel() : 1)) * 100) + '%';
     }
 
     // Init
@@ -44,21 +48,22 @@
         $('btnSaveFromDetail').addEventListener('click', onSaveFromDetail);
         $('btnDownloadPng').addEventListener('click', downloadPng);
 
-        // View mode toggle (Actual = scroll, Optimize = fit-to-screen)
-        document.querySelectorAll('#viewModeGroup button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('#viewModeGroup button').forEach(b => {
-                    b.classList.remove('active', 'btn-light');
-                    b.classList.add('btn-outline-light');
-                });
-                btn.classList.remove('btn-outline-light');
-                btn.classList.add('active', 'btn-light');
-                viewMode = btn.dataset.mode;
-                if (detailRenderer) {
-                    detailRenderer.setFitMode(viewMode === 'optimize' ? 'fit' : 'width');
-                }
-            });
-        });
+        // Zoom controls
+        $('btnZoomIn').addEventListener('click', () => { if (detailRenderer) detailRenderer.zoomIn(); });
+        $('btnZoomOut').addEventListener('click', () => { if (detailRenderer) detailRenderer.zoomOut(); });
+        $('btnZoomReset').addEventListener('click', () => { if (detailRenderer) detailRenderer.zoomReset(); });
+
+        // Mouse wheel zoom on canvas container
+        const canvasContainer = $('detailCanvasContainer');
+        if (canvasContainer) {
+            canvasContainer.addEventListener('wheel', (e) => {
+                if (!detailRenderer) return;
+                if (!e.ctrlKey) return; // only zoom with Ctrl+wheel
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.08 : 0.08;
+                detailRenderer.setZoom(detailRenderer.getZoomTarget() + delta);
+            }, { passive: false });
+        }
 
         // OrderType tabs
         document.querySelectorAll('#orderTypeTabs .nav-link').forEach(tab => {
@@ -77,11 +82,12 @@
         try {
             cnvIdOptions = await fetchApi('/api/canvas-types/cnv-ids', { loadingMessage: 'กำลังโหลดข้อมูล..' });
             const select = $('cnvIdSelect');
-            cnvIdOptions.forEach(opt => {
+            cnvIdOptions.forEach((opt, idx) => {
                 const el = document.createElement('option');
                 el.value = opt.cnvId;
                 const widths = opt.rollWidths.map(w => w.rollWidth + 'm').join(', ');
-                el.textContent = `${opt.cnvDesc} (${widths})`;
+                const cnt = opt.orderCount || 0;
+                el.textContent = `${idx + 1}. ${opt.cnvDesc} (${widths}) — ${cnt} รายการ`;
                 select.appendChild(el);
             });
         } catch (err) {
@@ -418,8 +424,11 @@
                 body: JSON.stringify({ cnvId: selectedCnvId, selectedBarcodes }),
                 loadingMessage: 'กำลังคำนวณ Algorithm..'
             });
-            compareResults = response.results || [];
+            const allResults = response.results || [];
             totalSelected = response.totalSelected || selectedBarcodes.length;
+            // Keep only the single best result
+            const best = allResults.find(r => r.isBest) || allResults[0];
+            compareResults = best ? [best] : [];
             enrichPackedItemsWithTags();
             renderComparisonCards();
             $('btnExportCsv').classList.remove('d-none');
@@ -451,7 +460,7 @@
         });
     }
 
-    // ───── Render Algorithm Comparison Cards ─────
+    // ───── Render Algorithm Result Card (Best Only — "มาตรฐาน") ─────
     function renderComparisonCards() {
         const container = $('algorithmCards');
 
@@ -460,96 +469,73 @@
             return;
         }
 
-        // Assign colors to roll widths
-        const widths = [...new Set(compareResults.map(r => r.rollWidth))].sort((a, b) => a - b);
-        widths.forEach((w, i) => { rollWidthColors[w] = colorPalette[i % colorPalette.length]; });
+        // Hide legend/filter — single result only
+        $('colorLegend').classList.add('d-none');
+        $('resultSummary').textContent = '';
 
-        // Color legend
-        const legend = $('colorLegend');
-        const legendItems = $('legendItems');
-        legend.classList.remove('d-none');
-        legendItems.innerHTML = widths.map(w =>
-            `<span class="d-flex align-items-center gap-1 small">
-                <span class="legend-swatch" style="background:${rollWidthColors[w]}"></span> ${w}m
-            </span>`
-        ).join('');
-        $('resultSummary').textContent = `${compareResults.length} results | ${widths.length} roll widths`;
+        const r = compareResults[0];
+        const eff = r.result.efficiencyPct;
+        const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
+        const borderColor = '#1976d2';
+        const skipped = r.skippedCount || 0;
+        const skippedWarn = skipped > 0
+            ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (เกิน ${r.rollWidth}m)</div>`
+            : '';
 
-        // Render cards
-        container.innerHTML = compareResults.map((r, i) => {
-            const eff = r.result.efficiencyPct;
-            const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
-            const bestBadge = r.isBest ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem;">Best</span>' : '';
-            const bestClass = r.isBest ? 'best-card' : '';
-            const borderColor = rollWidthColors[r.rollWidth] || '#ddd';
-            const canvasId = `mini_${i}`;
-            const skipped = r.skippedCount || 0;
-            const skippedWarn = skipped > 0
-                ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (เกิน ${r.rollWidth}m)</div>`
-                : '';
-
-            return `<div class="col-xxl-3 col-xl-3 col-lg-4 col-md-6 card-col" data-rollwidth="${r.rollWidth}">
-                <div class="algorithm-card ${bestClass}" style="border-top: 3px solid ${borderColor};">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="fw-medium" style="font-size:0.75rem;">${r.algorithmNameTh}</span>
-                            <span class="badge bg-light text-dark border" style="font-size:0.65rem;">${r.rollWidth}m</span>
-                        </div>
-                        <div class="text-muted" style="font-size:0.68rem;">${r.algorithmName} ${bestBadge}</div>
+        container.innerHTML = `<div class="col-xxl-3 col-xl-3 col-lg-4 col-md-6 card-col" data-rollwidth="${r.rollWidth}">
+            <div class="algorithm-card best-card" style="border-top: 3px solid ${borderColor};">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-medium" style="font-size:0.75rem;">มาตรฐาน</span>
+                        <span class="badge bg-light text-dark border" style="font-size:0.65rem;">${r.rollWidth}m</span>
                     </div>
-                    <div class="card-body p-2">
-                        ${skippedWarn}
-                        <div class="text-center mb-1">
-                            <div class="fw-bold ${effClass}" style="font-size:1.5rem;">${eff}%</div>
-                            <div class="text-muted" style="font-size:0.65rem;margin-top:-2px;">ประสิทธิภาพ</div>
+                    <div class="text-muted" style="font-size:0.68rem;">${r.algorithmName} — ${r.algorithmNameTh}</div>
+                </div>
+                <div class="card-body p-2">
+                    ${skippedWarn}
+                    <div class="text-center mb-1">
+                        <div class="fw-bold ${effClass}" style="font-size:1.5rem;">${eff}%</div>
+                        <div class="text-muted" style="font-size:0.65rem;margin-top:-2px;">ประสิทธิภาพ</div>
+                    </div>
+                    <div class="mini-canvas-wrap mb-2"><canvas id="mini_0"></canvas></div>
+                    <div class="row g-0 text-center" style="font-size:0.68rem;">
+                        <div class="col-4">
+                            <div class="text-muted">ตร.ม.</div>
+                            <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
                         </div>
-                        <div class="mini-canvas-wrap mb-2"><canvas id="${canvasId}"></canvas></div>
-                        <div class="row g-0 text-center" style="font-size:0.68rem;">
-                            <div class="col-4">
-                                <div class="text-muted">ตร.ม.</div>
-                                <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
-                            </div>
-                            <div class="col-4">
-                                <div class="text-muted">สูญเสีย</div>
-                                <div class="fw-bold text-danger">${formatNumber(r.result.wasteArea)}</div>
-                            </div>
-                            <div class="col-4">
-                                <div class="text-muted">ชิ้น</div>
-                                <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
-                            </div>
+                        <div class="col-4">
+                            <div class="text-muted">สูญเสีย</div>
+                            <div class="fw-bold text-danger">${formatNumber(r.result.wasteArea)}</div>
                         </div>
-                        <div class="mt-1">
-                            <div class="progress">
-                                <div class="progress-bar" style="width:${Math.min(100, eff)}%; background:${borderColor};"></div>
-                            </div>
+                        <div class="col-4">
+                            <div class="text-muted">ชิ้น</div>
+                            <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
                         </div>
                     </div>
-                    <div class="card-footer">
-                        <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="${i}" style="font-size:0.72rem;">
-                            <i class="bi bi-eye me-1"></i>ดูรายละเอียด
-                        </button>
+                    <div class="mt-1">
+                        <div class="progress">
+                            <div class="progress-bar" style="width:${Math.min(100, eff)}%; background:${borderColor};"></div>
+                        </div>
                     </div>
                 </div>
-            </div>`;
-        }).join('');
+                <div class="card-footer">
+                    <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="0" style="font-size:0.72rem;">
+                        <i class="bi bi-eye me-1"></i>ดูรายละเอียด
+                    </button>
+                </div>
+            </div>
+        </div>`;
 
-        // Render mini canvases
+        // Render mini canvas
         requestAnimationFrame(() => {
-            compareResults.forEach((r, i) => {
-                try {
-                    const renderer = new CanvasRenderer(`mini_${i}`, { mini: true });
-                    renderer.render(r.result);
-                } catch (e) { /* ignore render errors */ }
-            });
+            try {
+                const renderer = new CanvasRenderer('mini_0', { mini: true });
+                renderer.render(r.result);
+            } catch (e) { /* ignore */ }
         });
 
-        // Bind card buttons
-        container.querySelectorAll('.btn-detail').forEach(btn => {
-            btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.idx)));
-        });
-
-        // Apply roll width filter
-        filterCardsByRollWidth();
+        // Bind detail button
+        container.querySelector('.btn-detail').addEventListener('click', () => openDetail(0));
     }
 
     function filterCardsByRollWidth() {
@@ -573,49 +559,49 @@
         const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
 
         // Header
-        $('detailModalTitle').textContent = `${r.algorithmNameTh} (${r.algorithmName})`;
-        $('detailModalSubtitle').textContent = `Roll Width ${r.rollWidth}m`;
+        $('detailModalTitle').textContent = `มาตรฐาน`;
+        $('detailModalSubtitle').textContent = `${r.algorithmNameTh} — Roll Width ${r.rollWidth}m`;
         $('detailRollWidth').textContent = `${r.rollWidth} m`;
         $('detailTotalLength').textContent = `${formatNumber(res.totalLength)} m`;
         $('detailEffBadge').innerHTML = `<span class="${effClass}">${eff}%</span>`;
 
-        // Metrics cards (stacked vertical with colors)
+        // Metrics cards (clean left-border style)
         const effMetricClass = eff >= 70 ? 'metric-eff-high' : (eff >= 50 ? 'metric-eff-mid' : 'metric-eff-low');
         const skipped = r.skippedCount || 0;
         const skippedHtml = skipped > 0
-            ? `<div class="col-12"><div class="skipped-warning mb-2">
+            ? `<div class="skipped-warning mb-2">
                 <i class="bi bi-exclamation-triangle-fill me-1"></i>
                 <strong>${skipped} ชิ้นถูกข้าม</strong> - ขนาดใหญ่เกินกว่า roll ${r.rollWidth}m
                 ${(r.skippedBarcodes || []).map(b => `<div class="small mt-1" style="color:#856404;">&bull; ${b}</div>`).join('')}
-               </div></div>`
+               </div>`
             : '';
 
         $('detailMetrics').innerHTML = `
             ${skippedHtml}
-            <div class="col-12"><div class="detail-metric ${effMetricClass}">
+            <div class="detail-metric ${effMetricClass}">
                 <div class="label">ประสิทธิภาพ</div>
-                <div class="value">${eff}%</div>
-            </div></div>
-            <div class="col-12"><div class="detail-metric metric-used">
+                <div class="value">${eff}<span class="unit">%</span></div>
+            </div>
+            <div class="detail-metric metric-used">
                 <div class="label">พื้นที่ใช้จริง</div>
                 <div class="value">${formatNumber(res.usedArea)} <span class="unit">ตร.ม.</span></div>
-            </div></div>
-            <div class="col-12"><div class="detail-metric metric-waste">
+            </div>
+            <div class="detail-metric metric-waste">
                 <div class="label">พื้นที่สูญเสีย</div>
                 <div class="value">${formatNumber(res.wasteArea)} <span class="unit">ตร.ม.</span></div>
-            </div></div>
-            <div class="col-12"><div class="detail-metric metric-length">
+            </div>
+            <div class="detail-metric metric-length">
                 <div class="label">ความยาวรวม</div>
                 <div class="value">${formatNumber(res.totalLength)} <span class="unit">ม.</span></div>
-            </div></div>
-            <div class="col-12"><div class="detail-metric metric-rolls">
+            </div>
+            <div class="detail-metric metric-rolls">
                 <div class="label">จำนวนม้วน</div>
                 <div class="value">1 <span class="unit">ม้วน</span></div>
-            </div></div>
-            <div class="col-12"><div class="detail-metric metric-pieces">
+            </div>
+            <div class="detail-metric metric-pieces">
                 <div class="label">จำนวนชิ้น</div>
                 <div class="value">${r.fittableCount || res.pieceCount}/${totalSelected} <span class="unit">ชิ้น</span></div>
-            </div></div>`;
+            </div>`;
 
         // ORNO Color Legend
         const items = res.packedItems || [];
@@ -628,75 +614,13 @@
         $('detailOrnoLegend').innerHTML = ornoSet.map((orno, i) => {
             const color = palette[i % palette.length];
             const count = items.filter(it => (it.orno || '') === orno).length;
-            return `<div class="d-flex align-items-center gap-2 py-1">
+            return `<div class="d-flex align-items-center gap-2">
                 <span class="legend-swatch" style="background:${color};"></span>
-                <span class="small fw-medium">${orno || '(ไม่มี)'}</span>
-                <span class="ms-auto badge bg-light text-dark" style="font-size:0.65rem;">${count} ชิ้น</span>
+                <span class="small fw-medium" style="color:var(--gray-700);">${orno || '(ไม่มี)'}</span>
+                <span class="ms-auto" style="font-size:0.68rem;color:var(--gray-400);font-weight:500;">${count} ชิ้น</span>
             </div>`;
         }).join('');
 
-        // Items table with comprehensive report columns
-        const hasAnyTag = items.some(it => it._tagWidth || it._tagLength);
-        $('detailItems').innerHTML = `
-            <table class="table table-sm table-hover mb-0" style="font-size:0.68rem;">
-                <thead><tr>
-                    <th style="width:24px;">#</th>
-                    <th>Barcode</th>
-                    <th>Order</th>
-                    <th class="text-end">พรม W</th>
-                    <th class="text-end">พรม L</th>
-                    <th class="text-end">พท.พรม</th>
-                    ${hasAnyTag ? `
-                    <th class="text-end">Tag W</th>
-                    <th class="text-end">Tag L</th>
-                    <th class="text-end">พท.Tag</th>
-                    <th class="text-end">%เผื่อ Tag</th>` : ''}
-                    <th class="text-end">ตัด W</th>
-                    <th class="text-end">ตัด L</th>
-                    <th class="text-end">พท.ตัด</th>
-                    ${hasAnyTag ? '<th class="text-end">%เผื่อ ตัด</th>' : ''}
-                    <th class="text-end">%สูญเสีย</th>
-                    <th class="text-center">R</th>
-                </tr></thead>
-                <tbody>${items.map((it, i) => {
-                    const carpetW = it.originalWidth;
-                    const carpetL = it.originalLength;
-                    const carpetArea = carpetW * carpetL;
-                    const tagW = it._tagWidth;
-                    const tagL = it._tagLength;
-                    const tagArea = (tagW && tagL) ? tagW * tagL : null;
-                    const tagAllowancePct = tagArea ? (((tagArea - carpetArea) / carpetArea) * 100).toFixed(1) : null;
-                    const cutW = it.packWidth;
-                    const cutL = it.packLength;
-                    const cutArea = cutW * cutL;
-                    const cutVsTagPct = tagArea ? (((cutArea - tagArea) / tagArea) * 100).toFixed(1) : null;
-                    const wastePct = carpetArea > 0 ? (((cutArea - carpetArea) / carpetArea) * 100).toFixed(1) : null;
-
-                    const colorTag = tagAllowancePct !== null ? (parseFloat(tagAllowancePct) <= 5 ? '#16a34a' : parseFloat(tagAllowancePct) <= 15 ? '#ea580c' : '#dc2626') : '';
-                    const colorCut = cutVsTagPct !== null ? (parseFloat(cutVsTagPct) <= 5 ? '#16a34a' : parseFloat(cutVsTagPct) <= 15 ? '#ea580c' : '#dc2626') : '';
-                    const colorWaste = wastePct !== null ? (parseFloat(wastePct) <= 10 ? '#16a34a' : parseFloat(wastePct) <= 20 ? '#ea580c' : '#dc2626') : '';
-
-                    return `<tr>
-                        <td>${i + 1}</td>
-                        <td><code class="small" style="color:#0d47a1;">${it.barcodeNo || ''}</code></td>
-                        <td class="small">${it.orno || ''}</td>
-                        <td class="text-end">${formatNumber(carpetW)}</td>
-                        <td class="text-end">${formatNumber(carpetL)}</td>
-                        <td class="text-end">${formatNumber(carpetArea)}</td>
-                        ${hasAnyTag ? `
-                        <td class="text-end">${tagW ? formatNumber(tagW) : '-'}</td>
-                        <td class="text-end">${tagL ? formatNumber(tagL) : '-'}</td>
-                        <td class="text-end">${tagArea ? formatNumber(tagArea) : '-'}</td>
-                        <td class="text-end fw-medium" style="color:${colorTag};">${tagAllowancePct !== null ? tagAllowancePct + '%' : '-'}</td>` : ''}
-                        <td class="text-end">${formatNumber(cutW)}</td>
-                        <td class="text-end">${formatNumber(cutL)}</td>
-                        <td class="text-end">${formatNumber(cutArea)}</td>
-                        ${hasAnyTag ? `<td class="text-end fw-medium" style="color:${colorCut};">${cutVsTagPct !== null ? cutVsTagPct + '%' : '-'}</td>` : ''}
-                        <td class="text-end fw-medium" style="color:${colorWaste};">${wastePct !== null ? wastePct + '%' : '-'}</td>
-                        <td class="text-center">${it.isRotated ? '<span class="badge bg-warning text-dark" style="font-size:0.6rem;">R</span>' : '-'}</td>
-                    </tr>`;
-                }).join('')}</tbody>
-            </table>`;
     }
 
     function openDetail(index) {
@@ -704,16 +628,10 @@
         if (!r) return;
         currentDetailIndex = index;
 
-        // Reset view mode toggle to current state
-        document.querySelectorAll('#viewModeGroup button').forEach(b => {
-            if (b.dataset.mode === viewMode) {
-                b.classList.remove('btn-outline-light');
-                b.classList.add('active', 'btn-light');
-            } else {
-                b.classList.remove('active', 'btn-light');
-                b.classList.add('btn-outline-light');
-            }
-        });
+        // Reset zoom to 100% every time detail opens
+        if (detailRenderer) detailRenderer.zoomReset();
+        const zBtn = $('btnZoomReset');
+        if (zBtn) zBtn.textContent = '100%';
 
         // Show detail checkbox
         const chk = $('chkShowDetail');
@@ -733,12 +651,9 @@
             $('detailModal').removeEventListener('shown.bs.modal', handler);
             if (!detailRenderer) {
                 detailRenderer = new CanvasRenderer('detailCanvas');
+                detailRenderer._onZoomChange = updateZoomLabel;
             }
-            detailRenderer.fitMode = viewMode === 'optimize' ? 'fit' : 'width';
-            const scrollContainer = $('detailCanvasContainer');
-            if (scrollContainer) {
-                scrollContainer.style.overflow = viewMode === 'optimize' ? 'hidden' : 'auto';
-            }
+            detailRenderer.setFitMode('fit');
             detailRenderer.render(r.result);
         });
     }
@@ -824,12 +739,245 @@
     }
 
     function downloadPng() {
-        const canvas = $('detailCanvas');
-        if (!canvas) return;
+        if (currentDetailIndex === null) return;
+        const r = compareResults[currentDetailIndex];
+        if (!r || !detailRenderer) return;
+        const res = r.result;
+        const items = res.packedItems || [];
+        if (!items.length) return;
+
+        showLoading('กำลังสร้างรูป PNG...');
+        setTimeout(() => {
+            try { _generateExportPng(r, res, items); }
+            catch (e) { console.error('PNG export error:', e); showAlert('ไม่สามารถสร้างรูปได้', 'danger'); }
+            finally { hideLoading(); }
+        }, 60);
+    }
+
+    function _generateExportPng(r, res, items) {
+        // ── Color palette (same as renderer) ──
+        const palette = [
+            '#2196F3','#4CAF50','#FF9800','#E91E63','#9C27B0','#00BCD4',
+            '#FF5722','#3F51B5','#8BC34A','#FFC107','#795548','#607D8B',
+            '#F44336','#009688','#CDDC39','#673AB7','#03A9F4','#FF6F00',
+            '#1B5E20','#AD1457','#0D47A1','#E65100','#4A148C','#006064'
+        ];
+        const ornos = [...new Set(items.map(it => it.orno || it.ORNO || ''))];
+        const ornoColor = {};
+        ornos.forEach((o, i) => { ornoColor[o] = palette[i % palette.length]; });
+
+        // ── Segment parameters ──
+        const segLenM = Math.max(res.rollWidth, 5);    // each segment length in meters (min = roll width for squareish)
+        const cols = 3;                                  // segments per row
+        const segGap = 8;                                // gap between segments in px
+        const rulerH = 20;                               // ruler height per segment
+        const segPxPerM = 200;                           // fixed scale for export
+        const pad = 24;
+        const headerH = 72;
+
+        const segWpx = Math.ceil(res.rollWidth * segPxPerM);
+        const totalSegs = Math.ceil(res.totalLength / segLenM);
+        const segHpx = Math.ceil(segLenM * segPxPerM);
+        const rows = Math.ceil(totalSegs / cols);
+
+        // Total grid width
+        const gridW = cols * segWpx + (cols - 1) * segGap;
+        const gridH = rows * (segHpx + rulerH) + (rows - 1) * segGap;
+
+        // Legend
+        const legendCols = 3;
+        const legendColW = Math.floor(gridW / legendCols);
+        const legendRowH = 26;
+        const legendRows = Math.ceil(ornos.length / legendCols);
+        const legendH = 42 + legendRows * legendRowH + 16;
+
+        const canvasW = gridW + pad * 2;
+        const canvasH = headerH + gridH + legendH + pad + 10;
+
+        // ── Offscreen canvas ──
+        const off = document.createElement('canvas');
+        off.width = canvasW;
+        off.height = canvasH;
+        const ctx = off.getContext('2d');
+
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // ── Header ──
+        ctx.fillStyle = '#111';
+        ctx.font = 'bold 20px Kanit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`Carpet Layout: ${r.algorithmNameTh}`, pad, pad);
+
+        ctx.fillStyle = '#666';
+        ctx.font = '13px Kanit, sans-serif';
+        ctx.fillText(
+            `พรมหลัก: ${r.rollWidth}m | ความยาว: ${res.totalLength.toFixed(2)}m | ประสิทธิภาพ: ${res.efficiencyPct}% | จำนวน: ${items.length} ชิ้น`,
+            pad, pad + 32
+        );
+
+        // ── Draw segments ──
+        for (let s = 0; s < totalSegs; s++) {
+            const col = s % cols;
+            const row = Math.floor(s / cols);
+            const sx = pad + col * (segWpx + segGap);
+            const sy = headerH + row * (segHpx + rulerH + segGap);
+
+            const segStartM = s * segLenM;
+            const segEndM = Math.min((s + 1) * segLenM, res.totalLength);
+            const actualSegH = Math.ceil((segEndM - segStartM) * segPxPerM);
+
+            // Ruler label (segment range)
+            ctx.fillStyle = '#040d1a';
+            ctx.fillRect(sx, sy, segWpx, rulerH);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px Kanit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${segStartM.toFixed(1)}m – ${segEndM.toFixed(1)}m`, sx + segWpx / 2, sy + rulerH / 2);
+
+            // Roll background for this segment
+            const segTop = sy + rulerH;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(sx, segTop, segWpx, actualSegH);
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(sx, segTop, segWpx, actualSegH);
+
+            // Draw items that overlap this segment
+            items.forEach((item, i) => {
+                const iy = item.packY;
+                const ih = item.packLength;
+                // Skip items fully outside this segment
+                if (iy + ih <= segStartM || iy >= segEndM) return;
+
+                const key = item.orno || item.ORNO || '';
+                const color = ornoColor[key] || '#90A4AE';
+
+                const x = sx + item.packX * segPxPerM;
+                const yRel = (iy - segStartM) * segPxPerM;
+                const y = segTop + yRel;
+                const w = item.packWidth * segPxPerM;
+                const h = ih * segPxPerM;
+
+                // Skip if fully clipped out
+                if (y + h <= segTop || y >= segTop + actualSegH) return;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(sx, segTop, segWpx, actualSegH);
+                ctx.clip();
+
+                // Fill item
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, w, h);
+
+                // Item text (only if item starts in this segment)
+                if (iy >= segStartM) {
+                    _drawExportItemText(ctx, item, i, x, y, w, h, color);
+                }
+
+                ctx.restore();
+            });
+        }
+
+        // ── Legend section ──
+        const legY = headerH + gridH + 14;
+        const legH = legendH - 14;
+
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(pad, legY, gridW, legH);
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pad, legY, gridW, legH);
+
+        ctx.fillStyle = '#111';
+        ctx.font = 'bold 13px Kanit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('รายการ Design:', pad + 14, legY + 10);
+
+        ctx.font = '11px Kanit, sans-serif';
+        ornos.forEach((orno, i) => {
+            const col = i % legendCols;
+            const row = Math.floor(i / legendCols);
+            const cx = pad + 14 + col * legendColW;
+            const cy = legY + 38 + row * legendRowH;
+            const color = ornoColor[orno] || '#90A4AE';
+            const count = items.filter(it => (it.orno || it.ORNO || '') === orno).length;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.roundRect(cx, cy, 14, 14, 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#333';
+            ctx.textBaseline = 'middle';
+            const label = `${orno || '(ไม่มี)'} (${count} ชิ้น)`;
+            ctx.fillText(_truncText(ctx, label, legendColW - 40), cx + 20, cy + 7);
+        });
+
+        // ── Download ──
         const link = document.createElement('a');
-        link.download = `layout-${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
+        link.download = `layout-${r.algorithmNameTh}-${r.rollWidth}m.png`;
+        link.href = off.toDataURL('image/png');
         link.click();
+    }
+
+    function _drawExportItemText(ctx, item, i, x, y, w, h, color) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+
+        const rr = parseInt(color.slice(1, 3), 16);
+        const gg = parseInt(color.slice(3, 5), 16);
+        const bb = parseInt(color.slice(5, 7), 16);
+        const bright = (rr * 299 + gg * 587 + bb * 114) / 1000;
+        const txtCol = bright > 145 ? '#111' : '#fff';
+
+        ctx.fillStyle = txtCol;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        const key = item.orno || item.ORNO || '';
+        const num = `#${i + 1}`;
+        const rot = item.isRotated ? ' R' : '';
+        const dim = `${item.packWidth.toFixed(2)}x${item.packLength.toFixed(2)}`;
+
+        if (w > 65 && h > 48) {
+            ctx.font = 'bold 12px Kanit, sans-serif';
+            ctx.fillText(`${num}${rot}`, x + 5, y + 4);
+            ctx.font = '10px Kanit, sans-serif';
+            ctx.fillText(_truncText(ctx, key, w - 10), x + 5, y + 20);
+            ctx.fillText(dim, x + 5, y + 34);
+        } else if (w > 45 && h > 30) {
+            ctx.font = 'bold 10px Kanit, sans-serif';
+            ctx.fillText(_truncText(ctx, `${num}${rot} ${key}`, w - 8), x + 4, y + 3);
+            ctx.font = '9px Kanit, sans-serif';
+            ctx.fillText(dim, x + 4, y + 17);
+        } else if (w > 50 && h > 15) {
+            ctx.font = 'bold 9px Kanit, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(_truncText(ctx, `${num} ${key}`, w - 6), x + 3, y + h / 2);
+        } else if (w > 26 && h > 15) {
+            ctx.font = 'bold 9px Kanit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(num, x + w / 2, y + h / 2);
+        }
+        ctx.restore();
+    }
+
+    function _truncText(ctx, text, maxW) {
+        if (ctx.measureText(text).width <= maxW) return text;
+        let t = text;
+        while (t.length > 2 && ctx.measureText(t + '..').width > maxW) t = t.slice(0, -1);
+        return t + '..';
     }
 
     // ───── Edit Mode ─────

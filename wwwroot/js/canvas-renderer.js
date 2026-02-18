@@ -14,9 +14,10 @@ class CanvasRenderer {
         this.result = null;
         this._ornoColorMap = {};
         this.fitMode = 'fit'; // 'width' (actual, may scroll) or 'fit' (optimize, fit to container)
-        this._wrapCols = 1;
-        this._segmentLength = 0;
-        this._wrapGapPx = 4;
+        this._zoomLevel = 1.0;
+        this._zoomTarget = 1.0;
+        this._zoomAnimId = null;
+        this._onZoomChange = null; // callback when zoom changes
 
         if (!this.mini) {
             this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -28,14 +29,66 @@ class CanvasRenderer {
 
     setFitMode(mode) {
         this.fitMode = mode;
-        const scrollContainer = this.canvas.parentElement;
-        if (scrollContainer) {
-            scrollContainer.style.overflow = mode === 'fit' ? 'hidden' : 'auto';
-            scrollContainer.style.alignItems = mode === 'fit' ? 'center' : 'flex-start';
-            scrollContainer.style.justifyContent = mode === 'fit' ? 'center' : 'flex-start';
+        const sc = this.canvas.parentElement;
+        if (sc) {
+            if (mode === 'height') {
+                // Fill height, scroll horizontally (Report page — horizontal roll)
+                sc.style.overflowX = 'auto';
+                sc.style.overflowY = 'hidden';
+                sc.style.alignItems = 'flex-start';
+                sc.style.justifyContent = 'flex-start';
+            } else {
+                // Fill width, scroll vertically (default — vertical roll)
+                sc.style.overflowX = 'hidden';
+                sc.style.overflowY = 'auto';
+                sc.style.alignItems = 'flex-start';
+                sc.style.justifyContent = 'flex-start';
+            }
         }
         if (this.result) this.render(this.result);
     }
+
+    getZoomLevel() { return this._zoomLevel; }
+    getZoomTarget() { return this._zoomTarget; }
+
+    setZoom(level, animate = true) {
+        const minZ = this._minZoom || 0.1;
+        const clamped = Math.max(minZ, Math.min(5.0, level));
+        this._zoomTarget = clamped;
+        if (animate && this.result) {
+            this._animateZoom();
+        } else {
+            this._zoomLevel = clamped;
+            if (this._zoomAnimId) { cancelAnimationFrame(this._zoomAnimId); this._zoomAnimId = null; }
+            if (this.result) this.render(this.result);
+            if (this._onZoomChange) this._onZoomChange(this._zoomLevel);
+        }
+        return this._zoomTarget;
+    }
+
+    _animateZoom() {
+        if (this._zoomAnimId) cancelAnimationFrame(this._zoomAnimId);
+        const ease = 0.18; // lerp factor — higher = snappier
+        const step = () => {
+            const diff = this._zoomTarget - this._zoomLevel;
+            if (Math.abs(diff) < 0.003) {
+                this._zoomLevel = this._zoomTarget;
+                this._zoomAnimId = null;
+                if (this.result) this.render(this.result);
+                if (this._onZoomChange) this._onZoomChange(this._zoomLevel);
+                return;
+            }
+            this._zoomLevel += diff * ease;
+            if (this.result) this.render(this.result);
+            if (this._onZoomChange) this._onZoomChange(this._zoomLevel);
+            this._zoomAnimId = requestAnimationFrame(step);
+        };
+        this._zoomAnimId = requestAnimationFrame(step);
+    }
+
+    zoomIn() { return this.setZoom(this._zoomTarget + 0.1); }
+    zoomOut() { return this.setZoom(this._zoomTarget - 0.1); }
+    zoomReset() { return this.setZoom(1.0); }
 
     render(result) {
         this.result = result;
@@ -46,52 +99,43 @@ class CanvasRenderer {
         const container = this.canvas.parentElement;
         const offset = this.rulerSize + this.padding * 2;
         const containerWidth = container.clientWidth - offset;
+        const containerHeight = container.clientHeight - offset;
 
-        this._wrapCols = 1;
-        this._segmentLength = result.totalLength;
-
-        if (this.fitMode === 'fit' && !this.mini) {
-            const containerHeight = container.clientHeight - offset;
-            const rollAspect = result.totalLength / result.rollWidth;
-            const containerAspect = containerHeight > 0 ? containerWidth / containerHeight : 1;
-
-            if (rollAspect > 2.5 && containerHeight > 0) {
-                // Wrap mode: split roll into columns for better screen utilization
-                const numCols = Math.max(1, Math.round(Math.sqrt(containerAspect * rollAspect)));
-                this._wrapCols = numCols;
-                this._segmentLength = result.totalLength / numCols;
-                const totalGapPx = (numCols - 1) * this._wrapGapPx;
-                const totalRollWidthM = numCols * result.rollWidth;
-                const scaleByWidth = (containerWidth - totalGapPx) / totalRollWidthM;
-                const scaleByHeight = containerHeight / this._segmentLength;
-                this.scale = Math.min(scaleByWidth, scaleByHeight);
-            } else {
-                const scaleByWidth = containerWidth / result.rollWidth;
-                const scaleByHeight = containerHeight > 0 ? containerHeight / result.totalLength : scaleByWidth;
-                this.scale = Math.min(scaleByWidth, scaleByHeight);
-            }
+        // Base scale: 100% fills the primary axis
+        let baseScale;
+        if (this.fitMode === 'height') {
+            // Horizontal layout: fill container height, scroll X
+            baseScale = containerHeight / result.totalLength;
         } else {
-            this.scale = containerWidth / result.rollWidth;
+            // Vertical layout: fill container width, scroll Y
+            baseScale = containerWidth / result.rollWidth;
         }
 
-        let canvasWidth, canvasHeight;
-        if (this._wrapCols > 1) {
-            const colWidthPx = result.rollWidth * this.scale;
-            const totalGapPx = (this._wrapCols - 1) * this._wrapGapPx;
-            canvasWidth = this._wrapCols * colWidthPx + totalGapPx + offset;
-            canvasHeight = this._segmentLength * this.scale + offset;
-        } else {
-            canvasWidth = containerWidth + offset;
-            canvasHeight = result.totalLength * this.scale + offset;
-        }
+        // Min zoom = fit entire layout in container (both axes)
+        const minByW = containerWidth / (result.rollWidth * baseScale);
+        const minByH = containerHeight / (result.totalLength * baseScale);
+        this._minZoom = Math.max(0.01, Math.min(1.0, minByW, minByH));
+
+        this.scale = baseScale * this._zoomLevel;
+
+        const rollWidthPx = result.rollWidth * this.scale;
+        let canvasWidth = rollWidthPx + offset;
+        let canvasHeight = result.totalLength * this.scale + offset;
 
         if (this.mini) {
             const maxH = 120;
             if (canvasHeight > maxH) {
-                const fitScale = (maxH - this.padding * 2) / result.totalLength;
-                this.scale = Math.min(this.scale, fitScale);
+                const fitScale2 = (maxH - this.padding * 2) / result.totalLength;
+                this.scale = Math.min(this.scale, fitScale2);
                 canvasHeight = maxH;
             }
+        }
+
+        // Center canvas when narrower than container
+        if (!this.mini && canvasWidth < container.clientWidth) {
+            this.canvas.style.margin = '0 auto';
+        } else {
+            this.canvas.style.margin = '';
         }
 
         this.canvas.width = canvasWidth;
@@ -126,19 +170,13 @@ class CanvasRenderer {
 
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Wrapped multi-column mode
-        if (this._wrapCols > 1) {
-            this._drawWrapped(ctx, r, ox, oy);
-            return;
-        }
-
         const rollW = r.rollWidth * this.scale;
         const rollH = r.totalLength * this.scale;
 
-        // Roll background
-        ctx.fillStyle = '#e8e8e8';
+        // Roll background (white for visible gaps between items)
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(ox, oy, rollW, rollH);
-        ctx.strokeStyle = '#aaa';
+        ctx.strokeStyle = '#bbb';
         ctx.lineWidth = 1;
         ctx.strokeRect(ox, oy, rollW, rollH);
 
@@ -159,8 +197,8 @@ class CanvasRenderer {
             ctx.fillStyle = isHovered ? this._darkenHex(color) : color;
             ctx.fillRect(x, y, w, h);
 
-            ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-            ctx.lineWidth = 0.5;
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+            ctx.lineWidth = 1.5;
             ctx.strokeRect(x, y, w, h);
 
             // Item text
@@ -191,138 +229,6 @@ class CanvasRenderer {
         }
     }
 
-    // ───── Wrapped Column Rendering ─────
-
-    _drawWrapped(ctx, result, ox, oy) {
-        const numCols = this._wrapCols;
-        const segLen = this._segmentLength;
-        const colWidthPx = result.rollWidth * this.scale;
-        const gapPx = this._wrapGapPx;
-
-        for (let col = 0; col < numCols; col++) {
-            const colX = ox + col * (colWidthPx + gapPx);
-            const segStartM = col * segLen;
-            const segEndM = Math.min((col + 1) * segLen, result.totalLength);
-            const actualSegHPx = (segEndM - segStartM) * this.scale;
-
-            // Column background
-            ctx.fillStyle = '#e8e8e8';
-            ctx.fillRect(colX, oy, colWidthPx, actualSegHPx);
-            ctx.strokeStyle = '#bbb';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(colX, oy, colWidthPx, actualSegHPx);
-
-            // Grid lines within column
-            ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-            ctx.lineWidth = 0.5;
-            const maxW = Math.ceil(result.rollWidth);
-            for (let m = 1; m <= maxW; m++) {
-                const gx = colX + m * this.scale;
-                if (gx > colX + colWidthPx) break;
-                ctx.beginPath(); ctx.moveTo(gx, oy); ctx.lineTo(gx, oy + actualSegHPx); ctx.stroke();
-            }
-            const segLenCeil = Math.ceil(segEndM - segStartM);
-            for (let m = 1; m <= segLenCeil; m++) {
-                const gy = oy + m * this.scale;
-                if (gy > oy + actualSegHPx) break;
-                ctx.beginPath(); ctx.moveTo(colX, gy); ctx.lineTo(colX + colWidthPx, gy); ctx.stroke();
-            }
-
-            // Draw items in this segment (clipped)
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(colX, oy, colWidthPx, actualSegHPx);
-            ctx.clip();
-
-            this.items.forEach((item, i) => {
-                const itemTopM = item.packY;
-                const itemBottomM = item.packY + item.packLength;
-                if (itemBottomM <= segStartM || itemTopM >= segEndM) return;
-
-                const x = colX + item.packX * this.scale;
-                const y = oy + (item.packY - segStartM) * this.scale;
-                const w = item.packWidth * this.scale;
-                const h = item.packLength * this.scale;
-                const color = this._getItemColor(item);
-
-                const isHovered = !this.mini && this.hoveredItem === i;
-                ctx.fillStyle = isHovered ? this._darkenHex(color) : color;
-                ctx.fillRect(x, y, w, h);
-
-                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-                ctx.lineWidth = 0.5;
-                ctx.strokeRect(x, y, w, h);
-
-                if (this.showDetail) {
-                    this._drawItemText(ctx, item, i, x, y, w, h);
-                } else if (w > 20 && h > 14) {
-                    ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 11px Kanit';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(`#${i + 1}`, x + w / 2, y + h / 2);
-                }
-            });
-
-            ctx.restore();
-
-            // Column header label (meter range + roll width)
-            if (!this.mini) {
-                ctx.fillStyle = '#040d1a';
-                ctx.fillRect(colX, 0, colWidthPx, this.rulerSize);
-                ctx.fillStyle = '#fff';
-                ctx.font = '9px Kanit';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(
-                    `${segStartM.toFixed(1)}m — ${segEndM.toFixed(1)}m`,
-                    colX + colWidthPx / 2, this.rulerSize / 2 - 6
-                );
-                ctx.fillStyle = 'rgba(255,255,255,0.5)';
-                ctx.font = '8px Kanit';
-                ctx.fillText(
-                    `กว้าง ${result.rollWidth}m`,
-                    colX + colWidthPx / 2, this.rulerSize / 2 + 8
-                );
-            }
-        }
-
-        // Left ruler (for segment length)
-        if (!this.mini) {
-            const segHeightPx = segLen * this.scale;
-            ctx.fillStyle = '#040d1a';
-            ctx.fillRect(0, oy, this.rulerSize, segHeightPx);
-            ctx.fillRect(0, 0, this.rulerSize, this.rulerSize);
-
-            // Roll width label in top-left corner
-            ctx.fillStyle = '#ffc107';
-            ctx.font = 'bold 9px Kanit';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`กว้าง`, this.rulerSize / 2, this.rulerSize / 2 - 6);
-            ctx.fillText(`${result.rollWidth}m`, this.rulerSize / 2, this.rulerSize / 2 + 6);
-
-            ctx.fillStyle = '#fff';
-            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-            ctx.lineWidth = 0.5;
-            ctx.font = '10px Kanit';
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-            const maxSeg = Math.ceil(segLen);
-            for (let m = 0; m <= maxSeg; m++) {
-                const y = oy + m * this.scale;
-                if (y > oy + segHeightPx + 1) break;
-                ctx.beginPath(); ctx.moveTo(this.rulerSize - 10, y); ctx.lineTo(this.rulerSize, y); ctx.stroke();
-                if (m > 0) ctx.fillText(`${m}m`, this.rulerSize - 12, y);
-            }
-        }
-
-        // Tooltip
-        if (!this.mini && this.hoveredItem !== null && this.hoveredItem < this.items.length) {
-            this._drawTooltip(this.items[this.hoveredItem]);
-        }
-    }
-
     // ───── Item Text ─────
 
     _drawItemText(ctx, item, index, x, y, w, h) {
@@ -342,22 +248,35 @@ class CanvasRenderer {
         const num = `#${index + 1}`;
         const rotLabel = item.isRotated ? ' R' : '';
 
-        if (w > 70 && h > 50) {
-            ctx.font = 'bold 11px Kanit';
-            ctx.fillText(`${num}${rotLabel}`, x + 3, y + 3);
-            ctx.font = '10px Kanit';
-            ctx.fillText(orno, x + 3, y + 17);
-            ctx.fillStyle = 'rgba(255,255,255,0.7)';
-            ctx.font = '9px Kanit';
-            ctx.fillText(`${pw}x${pl}m`, x + 3, y + 30);
-            ctx.fillText(`${area} sqm`, x + 3, y + 42);
-        } else if (w > 40 && h > 30) {
-            ctx.font = 'bold 10px Kanit';
-            ctx.fillText(`${num}${rotLabel}`, x + 2, y + 2);
-            ctx.font = '9px Kanit';
-            ctx.fillText(orno, x + 2, y + 15);
-        } else if (w > 22 && h > 16) {
+        if (w > 55 && h > 38) {
+            // Full detail — 4 lines compact
             ctx.font = 'bold 9px Kanit';
+            ctx.fillText(`${num}${rotLabel}`, x + 2, y + 2);
+            ctx.font = '8px Kanit';
+            ctx.fillText(orno, x + 2, y + 13);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.font = '7px Kanit';
+            ctx.fillText(`${pw}x${pl}m`, x + 2, y + 23);
+            ctx.fillText(`${area} sqm`, x + 2, y + 32);
+        } else if (w > 80 && h > 14) {
+            // Wide but short — single line with all info
+            ctx.font = 'bold 8px Kanit';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${num}${rotLabel}  ${orno}  ${pw}x${pl}m  ${area}sqm`, x + 3, y + h / 2);
+        } else if (w > 40 && h > 14) {
+            // Medium wide but short — num + orno in one line
+            ctx.font = 'bold 8px Kanit';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${num}${rotLabel} ${orno}`, x + 3, y + h / 2);
+        } else if (w > 30 && h > 22) {
+            // Small tall — 2 lines
+            ctx.font = 'bold 8px Kanit';
+            ctx.fillText(`${num}${rotLabel}`, x + 2, y + 2);
+            ctx.font = '7px Kanit';
+            ctx.fillText(orno, x + 2, y + 12);
+        } else if (w > 16 && h > 10) {
+            // Tiny — just number
+            ctx.font = 'bold 7px Kanit';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(num, x + w / 2, y + h / 2);
@@ -367,6 +286,16 @@ class CanvasRenderer {
     }
 
     // ───── Rulers (single column mode) ─────
+
+    _niceStep() {
+        const niceSteps = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500];
+        const minPxPerMark = 40;
+        const pxPerMeter = this.scale;
+        for (const step of niceSteps) {
+            if (step * pxPerMeter >= minPxPerMark) return step;
+        }
+        return niceSteps[niceSteps.length - 1];
+    }
 
     _drawRulers(ox, oy, rollW, rollH, widthM, lengthM) {
         const ctx = this.ctx;
@@ -382,18 +311,23 @@ class CanvasRenderer {
         ctx.strokeStyle = 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 0.5;
 
+        const stepW = this._niceStep();
+        const stepL = this._niceStep();
+        const fmtLabel = (v) => Number.isInteger(v) ? `${v}m` : `${v}m`;
+
         // Top ruler
         ctx.font = '10px Kanit';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        const maxW = Math.ceil(widthM);
-        for (let m = 0; m <= maxW; m++) {
+        for (let m = 0; m <= widthM; m += stepW) {
             const x = ox + m * this.scale;
             if (x > ox + rollW + 1) break;
             ctx.beginPath(); ctx.moveTo(x, rs - 10); ctx.lineTo(x, rs); ctx.stroke();
-            if (m > 0) ctx.fillText(`${m}m`, x, rs - 12);
-            if (m + 0.5 <= widthM) {
-                const xh = ox + (m + 0.5) * this.scale;
+            if (m > 0) ctx.fillText(fmtLabel(m), x, rs - 12);
+            // Half-step tick
+            const half = m + stepW / 2;
+            if (half <= widthM) {
+                const xh = ox + half * this.scale;
                 ctx.beginPath(); ctx.moveTo(xh, rs - 6); ctx.lineTo(xh, rs); ctx.stroke();
             }
         }
@@ -401,14 +335,14 @@ class CanvasRenderer {
         // Left ruler
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        const maxL = Math.ceil(lengthM);
-        for (let m = 0; m <= maxL; m++) {
+        for (let m = 0; m <= lengthM; m += stepL) {
             const y = oy + m * this.scale;
             if (y > oy + rollH + 1) break;
             ctx.beginPath(); ctx.moveTo(rs - 10, y); ctx.lineTo(rs, y); ctx.stroke();
-            if (m > 0) ctx.fillText(`${m}m`, rs - 12, y);
-            if (m + 0.5 <= lengthM) {
-                const yh = oy + (m + 0.5) * this.scale;
+            if (m > 0) ctx.fillText(fmtLabel(m), rs - 12, y);
+            const half = m + stepL / 2;
+            if (half <= lengthM) {
+                const yh = oy + half * this.scale;
                 ctx.beginPath(); ctx.moveTo(rs - 6, yh); ctx.lineTo(rs, yh); ctx.stroke();
             }
         }
@@ -416,12 +350,12 @@ class CanvasRenderer {
         // Grid lines
         ctx.strokeStyle = 'rgba(0,0,0,0.06)';
         ctx.lineWidth = 0.5;
-        for (let m = 1; m <= maxW; m++) {
+        for (let m = stepW; m <= widthM; m += stepW) {
             const x = ox + m * this.scale;
             if (x > ox + rollW) break;
             ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + rollH); ctx.stroke();
         }
-        for (let m = 1; m <= maxL; m++) {
+        for (let m = stepL; m <= lengthM; m += stepL) {
             const y = oy + m * this.scale;
             if (y > oy + rollH) break;
             ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + rollW, y); ctx.stroke();
@@ -485,38 +419,15 @@ class CanvasRenderer {
 
         let found = null;
 
-        if (this._wrapCols > 1) {
-            // Wrapped mode: check items with column-adjusted positions
-            const colWidthPx = this.result.rollWidth * this.scale;
-            const gapPx = this._wrapGapPx;
-
-            for (let i = this.items.length - 1; i >= 0; i--) {
-                const item = this.items[i];
-                const col = Math.floor(item.packY / this._segmentLength);
-                const segStartM = col * this._segmentLength;
-
-                const x = ox + col * (colWidthPx + gapPx) + item.packX * this.scale;
-                const y = oy + (item.packY - segStartM) * this.scale;
-                const w = item.packWidth * this.scale;
-                const h = item.packLength * this.scale;
-
-                if (this._mouseX >= x && this._mouseX <= x + w && this._mouseY >= y && this._mouseY <= y + h) {
-                    found = i;
-                    break;
-                }
-            }
-        } else {
-            // Single column mode
-            for (let i = this.items.length - 1; i >= 0; i--) {
-                const item = this.items[i];
-                const x = ox + item.packX * this.scale;
-                const y = oy + item.packY * this.scale;
-                const w = item.packWidth * this.scale;
-                const h = item.packLength * this.scale;
-                if (this._mouseX >= x && this._mouseX <= x + w && this._mouseY >= y && this._mouseY <= y + h) {
-                    found = i;
-                    break;
-                }
+        for (let i = this.items.length - 1; i >= 0; i--) {
+            const item = this.items[i];
+            const x = ox + item.packX * this.scale;
+            const y = oy + item.packY * this.scale;
+            const w = item.packWidth * this.scale;
+            const h = item.packLength * this.scale;
+            if (this._mouseX >= x && this._mouseX <= x + w && this._mouseY >= y && this._mouseY <= y + h) {
+                found = i;
+                break;
             }
         }
 

@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Capet_OPS.Data;
 using Capet_OPS.Services;
 
 namespace Capet_OPS.Controllers.Api;
@@ -8,8 +10,13 @@ namespace Capet_OPS.Controllers.Api;
 public class CanvasTypesApiController : ControllerBase
 {
     private readonly ICanvasTypeService _service;
+    private readonly AppDbContext _db;
 
-    public CanvasTypesApiController(ICanvasTypeService service) => _service = service;
+    public CanvasTypesApiController(ICanvasTypeService service, AppDbContext db)
+    {
+        _service = service;
+        _db = db;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -29,6 +36,18 @@ public class CanvasTypesApiController : ControllerBase
     public async Task<IActionResult> GetDistinctCnvIds()
     {
         var types = await _service.GetAllAsync();
+
+        // Count available orders per CnvId (exclude already-planned)
+        var plannedBarcodes = await _db.PlannedBarcodes
+            .Select(b => b.BarcodeNo)
+            .ToListAsync();
+        var plannedSet = plannedBarcodes.ToHashSet();
+
+        var orderCounts = (await _db.FabricPieces.ToListAsync())
+            .Where(f => !plannedSet.Contains(f.BarcodeNo))
+            .GroupBy(f => f.CnvId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         var grouped = types
             .GroupBy(t => t.CnvId)
             .Select(g => new
@@ -36,7 +55,8 @@ public class CanvasTypesApiController : ControllerBase
                 CnvId = g.Key,
                 CnvDesc = g.First().CnvDesc,
                 RollWidths = g.Select(t => new { t.Id, t.RollWidth, t.CnvDesc }).OrderBy(x => x.RollWidth).ToList(),
-                Count = g.Count()
+                Count = g.Count(),
+                OrderCount = orderCounts.GetValueOrDefault(g.Key, 0)
             })
             .OrderBy(x => x.CnvId);
         return Ok(grouped);

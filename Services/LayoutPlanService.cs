@@ -34,9 +34,16 @@ public class LayoutPlanService : ILayoutPlanService
         try
         {
             var today = DateTime.UtcNow.ToString("yyyyMMdd");
-            var countToday = await _db.LayoutPlans
-                .CountAsync(p => p.PlanCode.StartsWith("PL-" + today));
-            var planCode = $"PL-{today}-{(countToday + 1):D4}";
+            var prefix = "PL-" + today + "-";
+            var maxSeq = await _db.LayoutPlans
+                .Where(p => p.PlanCode.StartsWith(prefix))
+                .Select(p => p.PlanCode.Substring(prefix.Length))
+                .ToListAsync();
+            var nextSeq = maxSeq
+                .Select(s => int.TryParse(s, out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            var planCode = $"{prefix}{nextSeq:D4}";
 
             var plan = new LayoutPlan
             {
