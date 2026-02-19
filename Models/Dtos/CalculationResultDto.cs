@@ -9,6 +9,8 @@ public class CalculationResultDto
     public decimal WasteArea { get; set; }
     public decimal EfficiencyPct { get; set; }
     public int PieceCount { get; set; }
+    public int JoinedRollCount { get; set; } = 1;
+    public decimal SingleRollWidth { get; set; }
     public List<PackedItemDto> PackedItems { get; set; } = new();
 }
 

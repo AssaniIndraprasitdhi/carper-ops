@@ -17,6 +17,7 @@ public class AlgorithmResultDto
     public int FittableCount { get; set; }
     public int SkippedCount { get; set; }
     public List<string> SkippedBarcodes { get; set; } = new();
+    public int JoinedRollCount { get; set; } = 1;
     public CalculationResultDto Result { get; set; } = new();
     public CalculationResultDto ResultOptimized { get; set; } = new();
 }

@@ -10,7 +10,7 @@ public class LayoutCalculationService : ILayoutCalculationService
     public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders)
         => Calculate(rollWidth, selectedOrders, PackingAlgorithm.Standard, 150);
 
-    public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm, int gapMm = 150)
+    public CalculationResultDto Calculate(decimal rollWidth, List<SqlServerOrderDto> selectedOrders, PackingAlgorithm algorithm, int gapMm = 150, List<int>? joinPositionsMm = null)
     {
         var rollWidthMm = (int)(rollWidth * SCALE);
         var items = selectedOrders.Select((order, index) => new PackItem
@@ -23,7 +23,7 @@ public class LayoutCalculationService : ILayoutCalculationService
         // MaxRects: rotation allowed, same gap as shelf, no outer margin
         if (algorithm == PackingAlgorithm.MaxRects)
         {
-            var packed = MaxRectsPack(rollWidthMm, items, gapMm);
+            var packed = MaxRectsPack(rollWidthMm, items, gapMm, joinPositionsMm);
             return BuildResult(rollWidth, selectedOrders, packed);
         }
 
@@ -443,7 +443,7 @@ public class LayoutCalculationService : ILayoutCalculationService
     // Rotation allowed, same gap as shelf, strip packing (fixed width, unlimited length)
     // BSSF heuristic: minimize the shorter leftover side — ideal for strip packing
 
-    private List<PlacedItem> MaxRectsPack(int rollWidthMm, List<PackItem> items, int innerGap)
+    private List<PlacedItem> MaxRectsPack(int rollWidthMm, List<PackItem> items, int innerGap, List<int>? joinPositionsMm = null)
     {
         // Sort by area descending, then max dimension descending for determinism
         var sorted = items
@@ -457,6 +457,20 @@ public class LayoutCalculationService : ILayoutCalculationService
         {
             new FreeRect { X = 0, Y = 0, Width = rollWidthMm, Height = MAX_LENGTH }
         };
+
+        // Block join line positions (เว้นช่องตรงรอยต่อผ้าใบ)
+        if (joinPositionsMm != null)
+        {
+            foreach (var joinX in joinPositionsMm)
+            {
+                // Block a strip of innerGap width centered on the join position
+                int blockX = joinX - innerGap / 2;
+                int blockW = innerGap;
+                if (blockX < 0) blockX = 0;
+                if (blockX + blockW > rollWidthMm) blockW = rollWidthMm - blockX;
+                SplitAndPruneFreeRects(freeRects, blockX, 0, blockW, MAX_LENGTH);
+            }
+        }
 
         var result = new List<PlacedItem>();
 

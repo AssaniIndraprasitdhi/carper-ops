@@ -180,6 +180,52 @@ class CanvasRenderer {
         ctx.lineWidth = 1;
         ctx.strokeRect(ox, oy, rollW, rollH);
 
+        // Join lines (เส้นต่อผ้าใบ)
+        const joinCount = r.joinedRollCount || 1;
+        const singleW = r.singleRollWidth || 0;
+        const joinAxis = r.joinAxis || 'x'; // 'x' = vertical lines, 'y' = horizontal lines
+        if (joinCount > 1 && singleW > 0) {
+            ctx.save();
+            ctx.setLineDash([8, 5]);
+            ctx.strokeStyle = '#e53935';
+            ctx.lineWidth = this.mini ? 1 : 2;
+            for (let i = 1; i < joinCount; i++) {
+                const pos = singleW * i * this.scale;
+                ctx.beginPath();
+                if (joinAxis === 'y') {
+                    ctx.moveTo(ox, oy + pos);
+                    ctx.lineTo(ox + rollW, oy + pos);
+                } else {
+                    ctx.moveTo(ox + pos, oy);
+                    ctx.lineTo(ox + pos, oy + rollH);
+                }
+                ctx.stroke();
+            }
+            // Labels
+            if (!this.mini) {
+                ctx.setLineDash([]);
+                ctx.font = 'bold 10px Kanit';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                for (let i = 1; i < joinCount; i++) {
+                    const pos = singleW * i * this.scale;
+                    const lbl = `ต่อม้วน ${i}`;
+                    const tw = ctx.measureText(lbl).width + 8;
+                    ctx.fillStyle = 'rgba(229,57,53,0.85)';
+                    if (joinAxis === 'y') {
+                        ctx.fillRect(ox - tw / 2 + rollW / 2, oy + pos - 16, tw, 15);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(lbl, ox + rollW / 2, oy + pos - 3);
+                    } else {
+                        ctx.fillRect(ox + pos - tw / 2, oy - 16, tw, 15);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(lbl, ox + pos, oy - 3);
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
         // Rulers
         if (!this.mini) {
             this._drawRulers(ox, oy, rollW, rollH, r.rollWidth, r.totalLength);
@@ -208,7 +254,8 @@ class CanvasRenderer {
                     ctx.font = 'bold 8px Kanit';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(`#${i + 1}`, x + w / 2, y + h / 2);
+                    const lbl = item.displayIndex != null ? item.displayIndex + 1 : i + 1;
+                    ctx.fillText(`#${lbl}`, x + w / 2, y + h / 2);
                 }
             } else if (this.showDetail) {
                 this._drawItemText(ctx, item, i, x, y, w, h);
@@ -218,7 +265,8 @@ class CanvasRenderer {
                     ctx.font = 'bold 11px Kanit';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(`#${i + 1}`, x + w / 2, y + h / 2);
+                    const lbl = item.displayIndex != null ? item.displayIndex + 1 : i + 1;
+                    ctx.fillText(`#${lbl}`, x + w / 2, y + h / 2);
                 }
             }
         });
@@ -245,7 +293,7 @@ class CanvasRenderer {
         const pw = item.packWidth;
         const pl = item.packLength;
         const area = (pw * pl).toFixed(2);
-        const num = `#${index + 1}`;
+        const num = `#${item.displayIndex != null ? item.displayIndex + 1 : index + 1}`;
         const rotLabel = item.isRotated ? ' R' : '';
 
         if (w > 55 && h > 38) {

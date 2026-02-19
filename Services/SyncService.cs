@@ -42,7 +42,10 @@ public class SyncService : ISyncService
             LEFT JOIN CARPET.DBO.HT_SCANBARCODE C ON C.OF_NO = A.ORNO
             WHERE A.ORDT >= '2026-01-01'
               AND C.HT_BARCODE IS NOT NULL
-              AND ISNULL(B.CnvID,'') <> ''";
+              AND ISNULL(B.CnvID,'') <> ''
+              AND A.ORTP = '0'
+              AND A.ORNO NOT LIKE '%A%'
+              AND A.ORNO NOT LIKE '%M%'";
 
         using var connection = new SqlConnection(_sqlSettings.ConnectionString);
         var rawOrders = (await connection.QueryAsync<SqlServerOrderDto>(sql)).ToList();
@@ -56,56 +59,34 @@ public class SyncService : ISyncService
             .ToList();
         _logger.LogInformation("After dedup: {Count} unique barcodes", sqlOrders.Count);
 
-        // 3. Get existing barcodes from PostgreSQL
-        var existingMap = await _db.FabricPieces
-            .ToDictionaryAsync(f => f.BarcodeNo, f => f);
+        // 3. ลบข้อมูลเก่าทั้งหมด
+        var deleted = await _db.FabricPieces.ExecuteDeleteAsync();
+        _logger.LogInformation("Deleted {Count} existing fabric pieces", deleted);
 
-        // 4. Upsert: insert new, update existing
+        // 4. Insert ข้อมูลใหม่ทั้งหมด
         var now = DateTime.UtcNow;
-        int inserted = 0, updated = 0;
-
         foreach (var order in sqlOrders)
         {
-            if (existingMap.TryGetValue(order.BarcodeNo, out var existing))
+            _db.FabricPieces.Add(new FabricPiece
             {
-                existing.Orno = order.ORNO ?? "";
-                existing.ListNo = order.ListNo;
-                existing.ItemNo = order.ItemNo;
-                existing.CnvId = order.CnvID ?? "";
-                existing.CnvDesc = order.CnvDesc;
-                existing.AsPlan = order.ASPLAN;
-                existing.Width = order.Width;
-                existing.Length = order.Length;
-                existing.Sqm = order.Sqm;
-                existing.Qty = order.Qty;
-                existing.OrderType = order.OrderType;
-                existing.SyncedAt = now;
-                updated++;
-            }
-            else
-            {
-                _db.FabricPieces.Add(new FabricPiece
-                {
-                    BarcodeNo = order.BarcodeNo,
-                    Orno = order.ORNO ?? "",
-                    ListNo = order.ListNo,
-                    ItemNo = order.ItemNo,
-                    CnvId = order.CnvID ?? "",
-                    CnvDesc = order.CnvDesc,
-                    AsPlan = order.ASPLAN,
-                    Width = order.Width,
-                    Length = order.Length,
-                    Sqm = order.Sqm,
-                    Qty = order.Qty,
-                    OrderType = order.OrderType,
-                    SyncedAt = now,
-                });
-                inserted++;
-            }
+                BarcodeNo = order.BarcodeNo,
+                Orno = order.ORNO ?? "",
+                ListNo = order.ListNo,
+                ItemNo = order.ItemNo,
+                CnvId = order.CnvID ?? "",
+                CnvDesc = order.CnvDesc,
+                AsPlan = order.ASPLAN,
+                Width = order.Width,
+                Length = order.Length,
+                Sqm = order.Sqm,
+                Qty = order.Qty,
+                OrderType = order.OrderType,
+                SyncedAt = now,
+            });
         }
 
         await _db.SaveChangesAsync();
-        _logger.LogInformation("Sync complete: {Inserted} inserted, {Updated} updated", inserted, updated);
-        return inserted + updated;
+        _logger.LogInformation("Sync complete: {Inserted} inserted (old {Deleted} deleted)", sqlOrders.Count, deleted);
+        return sqlOrders.Count;
     }
 }

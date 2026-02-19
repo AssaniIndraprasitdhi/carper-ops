@@ -419,16 +419,33 @@
         }
 
         try {
+            // Build tag overrides for AsPlan items
+            const tagOverrides = {};
+            currentOrders.filter(o => o._selected).forEach(o => {
+                if (o._tagWidth && o._tagLength) {
+                    tagOverrides[o.barcodeNo] = { width: o._tagWidth, length: o._tagLength };
+                }
+            });
+
             const response = await fetchApi('/api/calculation/compare', {
                 method: 'POST',
-                body: JSON.stringify({ cnvId: selectedCnvId, selectedBarcodes }),
+                body: JSON.stringify({
+                    cnvId: selectedCnvId,
+                    selectedBarcodes,
+                    tagOverrides: Object.keys(tagOverrides).length > 0 ? tagOverrides : null
+                }),
                 loadingMessage: 'กำลังคำนวณ Algorithm..'
             });
             const allResults = response.results || [];
             totalSelected = response.totalSelected || selectedBarcodes.length;
-            // Keep only the single best result
-            const best = allResults.find(r => r.isBest) || allResults[0];
-            compareResults = best ? [best] : [];
+            // Best single-roll result + best joined-roll result (if any)
+            const singleResults = allResults.filter(r => !r.joinedRollCount || r.joinedRollCount <= 1);
+            const joinedResults = allResults.filter(r => r.joinedRollCount > 1);
+            const bestSingle = singleResults.find(r => r.isBest) || singleResults[0];
+            const bestJoined = joinedResults[0]; // already best from backend
+            compareResults = [];
+            if (bestSingle) compareResults.push(bestSingle);
+            if (bestJoined) compareResults.push(bestJoined);
             enrichPackedItemsWithTags();
             renderComparisonCards();
             $('btnExportCsv').classList.remove('d-none');
@@ -460,7 +477,7 @@
         });
     }
 
-    // ───── Render Algorithm Result Card (Best Only — "มาตรฐาน") ─────
+    // ───── Render Algorithm Result Cards (single + joined) ─────
     function renderComparisonCards() {
         const container = $('algorithmCards');
 
@@ -469,73 +486,93 @@
             return;
         }
 
-        // Hide legend/filter — single result only
+        // Hide legend/filter
         $('colorLegend').classList.add('d-none');
         $('resultSummary').textContent = '';
 
-        const r = compareResults[0];
-        const eff = r.result.efficiencyPct;
-        const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
-        const borderColor = '#1976d2';
-        const skipped = r.skippedCount || 0;
-        const skippedWarn = skipped > 0
-            ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (เกิน ${r.rollWidth}m)</div>`
-            : '';
+        let html = '';
+        compareResults.forEach((r, idx) => {
+            const eff = r.result.efficiencyPct;
+            const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
+            const isJoined = (r.joinedRollCount || 1) > 1;
+            const borderColor = isJoined ? '#e53935' : '#1976d2';
+            const skipped = r.skippedCount || 0;
 
-        container.innerHTML = `<div class="col-xxl-3 col-xl-3 col-lg-4 col-md-6 card-col" data-rollwidth="${r.rollWidth}">
-            <div class="algorithm-card best-card" style="border-top: 3px solid ${borderColor};">
-                <div class="card-header">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="fw-medium" style="font-size:0.75rem;">มาตรฐาน</span>
-                        <span class="badge bg-light text-dark border" style="font-size:0.65rem;">${r.rollWidth}m</span>
-                    </div>
-                    <div class="text-muted" style="font-size:0.68rem;">${r.algorithmName} — ${r.algorithmNameTh}</div>
-                </div>
-                <div class="card-body p-2">
-                    ${skippedWarn}
-                    <div class="text-center mb-1">
-                        <div class="fw-bold ${effClass}" style="font-size:1.5rem;">${eff}%</div>
-                        <div class="text-muted" style="font-size:0.65rem;margin-top:-2px;">ประสิทธิภาพ</div>
-                    </div>
-                    <div class="mini-canvas-wrap mb-2"><canvas id="mini_0"></canvas></div>
-                    <div class="row g-0 text-center" style="font-size:0.68rem;">
-                        <div class="col-4">
-                            <div class="text-muted">ตร.ม.</div>
-                            <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
-                        </div>
-                        <div class="col-4">
-                            <div class="text-muted">สูญเสีย</div>
-                            <div class="fw-bold text-danger">${formatNumber(r.result.wasteArea)}</div>
-                        </div>
-                        <div class="col-4">
-                            <div class="text-muted">ชิ้น</div>
-                            <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
-                        </div>
-                    </div>
-                    <div class="mt-1">
-                        <div class="progress">
-                            <div class="progress-bar" style="width:${Math.min(100, eff)}%; background:${borderColor};"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-sm btn-outline-primary w-100 btn-detail" data-idx="0" style="font-size:0.72rem;">
-                        <i class="bi bi-eye me-1"></i>ดูรายละเอียด
-                    </button>
-                </div>
-            </div>
-        </div>`;
+            let headerLabel, headerBadge, skippedWarn;
+            if (isJoined) {
+                headerLabel = `ต่อผ้าใบ ${r.joinedRollCount} ม้วน`;
+                headerBadge = `${r.result.singleRollWidth || r.rollWidth}m × ${r.joinedRollCount}`;
+                skippedWarn = `<div class="joined-info" style="background:#fff3e0;color:#e65100;border-radius:4px;padding:4px 8px;font-size:0.7rem;margin-bottom:6px;">
+                    <i class="bi bi-link-45deg me-1"></i>ครบทุกชิ้น (${r.fittableCount} ชิ้น)
+                </div>`;
+            } else {
+                headerLabel = 'มาตรฐาน';
+                headerBadge = `${r.rollWidth}m`;
+                skippedWarn = skipped > 0
+                    ? `<div class="skipped-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>ข้าม ${skipped} ชิ้น (เกิน ${r.rollWidth}m)</div>`
+                    : '';
+            }
 
-        // Render mini canvas
+            html += `<div class="col-xxl-3 col-xl-3 col-lg-4 col-md-6 card-col" data-rollwidth="${r.rollWidth}">
+                <div class="algorithm-card ${idx === 0 ? 'best-card' : ''}" style="border-top: 3px solid ${borderColor};">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-medium" style="font-size:0.75rem;">${headerLabel}</span>
+                            <span class="badge bg-light text-dark border" style="font-size:0.65rem;">${headerBadge}</span>
+                        </div>
+                        <div class="text-muted" style="font-size:0.68rem;">${r.algorithmName} — ${r.algorithmNameTh}</div>
+                    </div>
+                    <div class="card-body p-2">
+                        ${skippedWarn}
+                        <div class="text-center mb-1">
+                            <div class="fw-bold ${effClass}" style="font-size:1.5rem;">${eff}%</div>
+                            <div class="text-muted" style="font-size:0.65rem;margin-top:-2px;">ประสิทธิภาพ</div>
+                        </div>
+                        <div class="mini-canvas-wrap mb-2"><canvas id="mini_${idx}"></canvas></div>
+                        <div class="row g-0 text-center" style="font-size:0.68rem;">
+                            <div class="col-4">
+                                <div class="text-muted">ตร.ม.</div>
+                                <div class="fw-bold">${formatNumber(r.result.usedArea)}</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-muted">สูญเสีย</div>
+                                <div class="fw-bold text-danger">${formatNumber(r.result.wasteArea)}</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-muted">ชิ้น</div>
+                                <div class="fw-bold">${r.fittableCount || r.result.pieceCount}/${totalSelected}</div>
+                            </div>
+                        </div>
+                        <div class="mt-1">
+                            <div class="progress">
+                                <div class="progress-bar" style="width:${Math.min(100, eff)}%; background:${borderColor};"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm ${isJoined ? 'btn-outline-danger' : 'btn-outline-primary'} w-100 btn-detail" data-idx="${idx}" style="font-size:0.72rem;">
+                            <i class="bi bi-eye me-1"></i>ดูรายละเอียด
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+
+        // Render mini canvases
         requestAnimationFrame(() => {
-            try {
-                const renderer = new CanvasRenderer('mini_0', { mini: true });
-                renderer.render(r.result);
-            } catch (e) { /* ignore */ }
+            compareResults.forEach((r, idx) => {
+                try {
+                    const renderer = new CanvasRenderer(`mini_${idx}`, { mini: true });
+                    renderer.render(r.result);
+                } catch (e) { /* ignore */ }
+            });
         });
 
-        // Bind detail button
-        container.querySelector('.btn-detail').addEventListener('click', () => openDetail(0));
+        // Bind detail buttons
+        container.querySelectorAll('.btn-detail').forEach(btn => {
+            btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.idx)));
+        });
     }
 
     function filterCardsByRollWidth() {
@@ -559,25 +596,37 @@
         const effClass = eff >= 70 ? 'eff-high' : (eff >= 50 ? 'eff-mid' : 'eff-low');
 
         // Header
-        $('detailModalTitle').textContent = `มาตรฐาน`;
-        $('detailModalSubtitle').textContent = `${r.algorithmNameTh} — Roll Width ${r.rollWidth}m`;
-        $('detailRollWidth').textContent = `${r.rollWidth} m`;
+        const isJoined = (r.joinedRollCount || 1) > 1;
+        const singleRW = res.singleRollWidth || r.rollWidth;
+        $('detailModalTitle').textContent = isJoined ? `ต่อผ้าใบ ${r.joinedRollCount} ม้วน` : 'มาตรฐาน';
+        $('detailModalSubtitle').textContent = isJoined
+            ? `${r.algorithmNameTh} — ${singleRW}m × ${r.joinedRollCount} ม้วน = ${r.rollWidth}m`
+            : `${r.algorithmNameTh} — Roll Width ${r.rollWidth}m`;
+        $('detailRollWidth').textContent = isJoined ? `${singleRW} × ${r.joinedRollCount} m` : `${r.rollWidth} m`;
         $('detailTotalLength').textContent = `${formatNumber(res.totalLength)} m`;
         $('detailEffBadge').innerHTML = `<span class="${effClass}">${eff}%</span>`;
 
         // Metrics cards (clean left-border style)
         const effMetricClass = eff >= 70 ? 'metric-eff-high' : (eff >= 50 ? 'metric-eff-mid' : 'metric-eff-low');
         const skipped = r.skippedCount || 0;
-        const skippedHtml = skipped > 0
-            ? `<div class="skipped-warning mb-2">
+        let statusHtml = '';
+        if (isJoined) {
+            statusHtml = `<div class="joined-info mb-2" style="background:#fff3e0;color:#e65100;border:1px solid #ffe0b2;border-radius:6px;padding:6px 10px;font-size:0.78rem;">
+                <i class="bi bi-link-45deg me-1"></i>
+                <strong>ต่อผ้าใบ ${r.joinedRollCount} ม้วน</strong> — กว้างรวม ${r.rollWidth}m (ครบทุกชิ้น)
+            </div>`;
+        } else if (skipped > 0) {
+            statusHtml = `<div class="skipped-warning mb-2">
                 <i class="bi bi-exclamation-triangle-fill me-1"></i>
                 <strong>${skipped} ชิ้นถูกข้าม</strong> - ขนาดใหญ่เกินกว่า roll ${r.rollWidth}m
                 ${(r.skippedBarcodes || []).map(b => `<div class="small mt-1" style="color:#856404;">&bull; ${b}</div>`).join('')}
-               </div>`
-            : '';
+               </div>`;
+        }
+
+        const rollCountVal = isJoined ? `${r.joinedRollCount} <span class="unit">ม้วน (ต่อกัน)</span>` : `1 <span class="unit">ม้วน</span>`;
 
         $('detailMetrics').innerHTML = `
-            ${skippedHtml}
+            ${statusHtml}
             <div class="detail-metric ${effMetricClass}">
                 <div class="label">ประสิทธิภาพ</div>
                 <div class="value">${eff}<span class="unit">%</span></div>
@@ -596,7 +645,7 @@
             </div>
             <div class="detail-metric metric-rolls">
                 <div class="label">จำนวนม้วน</div>
-                <div class="value">1 <span class="unit">ม้วน</span></div>
+                <div class="value">${rollCountVal}</div>
             </div>
             <div class="detail-metric metric-pieces">
                 <div class="label">จำนวนชิ้น</div>
@@ -691,6 +740,7 @@
                     wasteArea: r.result.wasteArea,
                     efficiencyPct: r.result.efficiencyPct,
                     pieceCount: r.result.pieceCount,
+                    joinedRollCount: r.joinedRollCount || 1,
                     packedItems: itemsToSave
                 }),
                 loadingMessage: isEdit ? 'กำลังอัปเดต..' : 'กำลังบันทึก..'

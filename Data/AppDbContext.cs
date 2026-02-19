@@ -67,6 +67,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.WasteArea).HasColumnName("waste_area").HasColumnType("decimal(12,4)");
             entity.Property(e => e.EfficiencyPct).HasColumnName("efficiency_pct").HasColumnType("decimal(5,2)");
             entity.Property(e => e.PieceCount).HasColumnName("piece_count");
+            entity.Property(e => e.JoinedRollCount).HasColumnName("joined_roll_count").HasDefaultValue(1);
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("planned");
             entity.Property(e => e.LayoutJson).HasColumnName("layout_json").HasColumnType("jsonb");
             entity.Property(e => e.Notes).HasColumnName("notes");

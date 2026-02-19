@@ -72,6 +72,8 @@
             color: #fff; font-size: 11px; min-width: 44px; text-align: center; font-weight: 500;
         }
 
+        #printRollsContainer { display: none; }
+
         /* Legend table — print only */
         .print-legend { display: none; }
 
@@ -120,6 +122,22 @@
                 display: inline-block; width: 12px; height: 12px;
                 border-radius: 2px; vertical-align: middle; margin-right: 4px;
             }
+            /* Split-by-roll print */
+            #canvasContainer.split-print { display: none !important; }
+            #printRollsContainer.active { display: block !important; }
+            .print-roll-section {
+                page-break-inside: avoid; page-break-after: always;
+            }
+            .roll-section-title {
+                font-size: 12px; font-weight: 600; color: #0d2137;
+                margin-bottom: 3px; padding: 3px 8px;
+                background: #e3f2fd; border-radius: 4px; display: inline-block;
+            }
+            .roll-canvas-wrap {
+                border: 1px solid #ddd; border-radius: 4px;
+                background: #fafafa; padding: 2px;
+            }
+            .roll-canvas-wrap canvas { display: block; max-width: 100%; }
         }
     </style>
 </head>
@@ -141,6 +159,10 @@
         <div class="item"><span class="label">กว้าง</span> <span class="val">@Model.RollWidth m</span></div>
         <div class="item"><span class="label">ยาว</span> <span class="val">@Model.TotalLength m</span></div>
         <div class="item"><span class="label">ชิ้น</span> <span class="val">@Model.PieceCount</span></div>
+        @if (Model.JoinedRollCount > 1)
+        {
+            <div class="item"><span class="label">ม้วน</span> <span class="val" style="color:#e53935;font-weight:700;">@Model.JoinedRollCount ม้วนต่อกัน</span></div>
+        }
         <div class="item"><span class="label">วันที่</span> <span class="val">@Model.CreatedAt.ToString("yyyy-MM-dd")</span></div>
     </div>
 
@@ -155,6 +177,7 @@
         <button id="btnZoomReset" style="font-size:11px; width:auto; padding:0 8px;">Reset</button>
     </div>
 
+    <div id="printRollsContainer"></div>
     <div class="print-legend" id="printLegend"></div>
 
     <div class="footer">
@@ -168,12 +191,17 @@
             const planData = @Html.Raw(Model.LayoutJson ?? "[]");
             const rollWidth = @Model.RollWidth;
             const totalLength = @Model.TotalLength;
+            const joinedRollCount = @Model.JoinedRollCount;
+            const singleRollWidth = joinedRollCount > 1 ? (rollWidth / joinedRollCount) : 0;
 
             if (planData && planData.length > 0) {
                 // สลับแกน: X = ความยาว (แนวนอน), Y = ความกว้าง (แนวตั้ง)
                 const result = {
                     rollWidth: totalLength,   // X axis = ความยาวผ้า
                     totalLength: rollWidth,    // Y axis = ความกว้างผ้า
+                    joinedRollCount: joinedRollCount,
+                    singleRollWidth: singleRollWidth,
+                    joinAxis: 'y',            // ในหน้า Report แกนกว้างอยู่แนวตั้ง
                     packedItems: planData.map(item => ({
                         packX: item.PackY ?? item.packY,           // Y→X (ตำแหน่งยาว→แนวนอน)
                         packY: item.PackX ?? item.packX,           // X→Y (ตำแหน่งกว้าง→แนวตั้ง)
@@ -247,14 +275,82 @@
                         <tbody>${rows}</tbody>
                     </table>`;
 
-                // Print: wrap mode เต็มจอเหมือนหน้า Algorithms
+                // Print handling — split by roll for joined canvas
                 window.addEventListener('beforeprint', () => {
-                    renderer.setZoom(1.0, false);
-                    renderer.noWrap = false;
-                    renderer.fitMode = 'fit';
-                    renderer.render(printResult);
+                    if (joinedRollCount > 1) {
+                        // ซ่อน canvas รวม แสดง canvas แยกทีละม้วน
+                        document.getElementById('canvasContainer').classList.add('split-print');
+                        const pc = document.getElementById('printRollsContainer');
+                        pc.innerHTML = '';
+                        pc.classList.add('active');
+                        pc.style.display = 'block';
+
+                        const singleW = singleRollWidth;
+                        const pageW = document.body.clientWidth || 800;
+
+                        for (let ri = 0; ri < joinedRollCount; ri++) {
+                            const lowX = singleW * ri;
+                            const highX = singleW * (ri + 1);
+
+                            // Filter items ของม้วนนี้ (ใช้จุดกึ่งกลาง)
+                            const rollItems = printResult.packedItems.filter(it => {
+                                const cx = it.packX + it.packWidth / 2;
+                                return cx >= lowX && cx < highX;
+                            });
+                            const shifted = rollItems.map(it => ({
+                                ...it,
+                                packX: +(it.packX - lowX).toFixed(4),
+                                displayIndex: printResult.packedItems.indexOf(it)
+                            }));
+
+                            // สร้าง section
+                            const sec = document.createElement('div');
+                            sec.className = 'print-roll-section';
+
+                            const ttl = document.createElement('div');
+                            ttl.className = 'roll-section-title';
+                            ttl.textContent = `ม้วนที่ ${ri + 1} / ${joinedRollCount}  —  กว้าง ${singleW}m × ยาว ${totalLength}m  —  ${shifted.length} ชิ้น`;
+                            sec.appendChild(ttl);
+
+                            const wrap = document.createElement('div');
+                            wrap.className = 'roll-canvas-wrap';
+                            wrap.style.width = pageW + 'px';
+                            wrap.style.height = '500px';
+
+                            const cvs = document.createElement('canvas');
+                            cvs.id = 'prc_' + ri;
+                            wrap.appendChild(cvs);
+                            sec.appendChild(wrap);
+                            pc.appendChild(sec);
+
+                            // Render ม้วนนี้
+                            const rollResult = {
+                                rollWidth: singleW,
+                                totalLength: totalLength,
+                                packedItems: shifted
+                            };
+                            const rr = new CanvasRenderer('prc_' + ri);
+                            rr.fitMode = 'fit';
+                            rr.render(rollResult);
+                            // ใช้ color map เดียวกับ renderer หลัก
+                            rr._ornoColorMap = renderer._ornoColorMap;
+                            rr.draw();
+                        }
+                    } else {
+                        renderer.setZoom(1.0, false);
+                        renderer.noWrap = false;
+                        renderer.fitMode = 'fit';
+                        renderer.render(printResult);
+                    }
                 });
                 window.addEventListener('afterprint', () => {
+                    if (joinedRollCount > 1) {
+                        document.getElementById('canvasContainer').classList.remove('split-print');
+                        const pc = document.getElementById('printRollsContainer');
+                        pc.classList.remove('active');
+                        pc.style.display = 'none';
+                        pc.innerHTML = '';
+                    }
                     renderer.noWrap = false;
                     renderer.fitMode = 'height';
                     renderer.setFitMode('height');

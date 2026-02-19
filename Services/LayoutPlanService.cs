@@ -56,6 +56,7 @@ public class LayoutPlanService : ILayoutPlanService
                 WasteArea = request.WasteArea,
                 EfficiencyPct = request.EfficiencyPct,
                 PieceCount = request.PieceCount,
+                JoinedRollCount = request.JoinedRollCount,
                 LayoutJson = JsonSerializer.Serialize(request.PackedItems),
                 Notes = request.Notes,
                 Status = "planned",
@@ -135,6 +136,7 @@ public class LayoutPlanService : ILayoutPlanService
             plan.WasteArea = request.WasteArea;
             plan.EfficiencyPct = request.EfficiencyPct;
             plan.PieceCount = request.PieceCount;
+            plan.JoinedRollCount = request.JoinedRollCount;
             plan.LayoutJson = JsonSerializer.Serialize(request.PackedItems);
             plan.Notes = request.Notes;
             plan.UpdatedAt = DateTime.UtcNow;
